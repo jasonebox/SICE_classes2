@@ -275,9 +275,14 @@ dates=['2017-07-28','2019-08-02','2020-07-22']
 dates=['2017-07-28','2021-07-30']
 
 
+
+dates=['2019-08-02'] # incomplete re-labeling
+
 # still to run
-# dates=['2017-07-12','2021-07-30','2022-07-31']
-dates=['2019-08-02']
+dates=['2017-07-12','2021-07-30','2022-07-31']
+
+# issue with huber_w
+dates=['2017-07-12']
 
 for datex in dates:
     
@@ -356,6 +361,8 @@ for datex in dates:
     
     features = ["dry_snow", "melted_snow", "flooded_snow","red_snow","bright_ice", "dark_ice", "lakes"]
     # features = ["dry_snow", "melted_snow", "flooded_snow","red_snow", "dark_ice", "lakes"]
+
+    # features = ["red_snow"]
     
     n_features = len(features)
     
@@ -366,14 +373,15 @@ for datex in dates:
         os.system('ls -lF '+ROI_file)
         ROI_label_gdf = gpd.read_file(ROI_file)
         ROI_label = ROI_label_gdf.to_crs("epsg:3413").iloc[0].geometry
-    
+        
         band='r_TOA_NDXI_0806'
         band='r_TOA_02'
         fn = f"{path_raw}{region_name}/{year}/{datex}_{band}.tif" #path_raw+region_name+'/'+year+'/'+datex+ "_" + band + ".tif"
         temp = rasterio.open(fn)
         masked = rasterio.mask.mask(temp, [ROI_label], nodata=np.nan)[0][0, :, :]
         LABELS[i, :, :] = masked
-    
+    #%%
+
         print(feature)
         print('     mean',np.nanmean(masked),'median',np.nanmedian(masked),'stdev',np.nanstd(masked))
     
