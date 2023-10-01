@@ -239,15 +239,15 @@ def RGBx(f_Red,f_Green,f_Blue, out_file):
 
 # ## change to your system's login name to change dir for local work
 if os.getlogin() == "jason":
-    base_path = "/Users/jason/Dropbox/S3/SICE_classes/"
+    base_path = "/Users/jason/Dropbox/S3/SICE_classes2/"
 if os.getlogin() == "adrien":
-    base_path = "/home/adrien/EO-IO/SICE_classes/"
+    base_path = "/home/adrien/EO-IO/SICE_classes2/"
 if os.getlogin() == "rasmus":
 # !! Rasmus paths
     current_path = os.getcwd()
     base_path = os.path.abspath('..')
 if os.getlogin() == "Jasper":
-    base_path = "E:/Jasper/Denmark/GEUS/SICE_classes/"
+    base_path = "E:/Jasper/Denmark/GEUS/SICE_classes2/"
 
 os.chdir(base_path)
 
@@ -277,7 +277,7 @@ dates=['2017-07-28','2021-07-30']
 
 # still to run
 # dates=['2017-07-12','2021-07-30','2022-07-31']
-dates=['2019-08-02']
+# dates=['2019-08-02']
 
 for datex in dates:
     
