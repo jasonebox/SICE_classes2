@@ -78,6 +78,11 @@ lat_n,lon_w=  63.87385184, -50.95036483
 lat_s,lon_e=  63.59879769, -49.78344783
 datex='2019-08-02'
 
+region="red_snow_Lyngmarksbræen"
+lat_n,lon_w=  69.36493894, -53.78286718
+lat_s,lon_e=  69.27859525, -53.44499144
+datex='2017-07-26'
+
 # region="red_surface_far_N"
 # lat_n,lon_w=  81.58913094, -30.88874646
 # lat_s,lon_e=  81.30497029, -28.82698918
