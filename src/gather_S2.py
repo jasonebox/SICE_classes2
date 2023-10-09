@@ -36,21 +36,35 @@ lat_s,lon_e=  71.92711899, -53.90419565
 region="red_snow_disko"
 lat_n,lon_w=  69.89715506, -53.86865057
 lat_s,lon_e=  69.37465286, -52.14642320
+datex='2020-07-22' # nothing for Lyngmarksbræen or Disko this date
 
-region="red_snow_sukkertoppen"
-lat_n,lon_w=  66.32144891, -53.41496170
-lat_s,lon_e=  65.65225591, -49.61648123
+region="red_snow_NNW"
+lat_n,lon_w=  82.13698217, -59.46714861
+lat_s,lon_e=  81.75274274, -56.50843801
+datex='2020-07-22' # nothing for Lyngmarksbræen or Disko this date
 
-# 2017-07-28 red_snow_sukkertoppen
-lat_n,lon_w=  65.85572276, -52.46412338
-lat_s,lon_e=  65.60115679, -51.70678723
+region="red_snow_Ingia"
+lat_n,lon_w=  72.44657169, -53.70165793
+lat_s,lon_e=  72.16005336, -51.79757873
+datex='2020-07-22' # nothing for Lyngmarksbræen or Disko this date
 
 
-# red_snow_sukkertoppen
-lat_n,lon_w=  66.42200123, -53.31628834
-lat_s,lon_e=  65.75210554, -49.95195323
-datex='2021-07-30'
-datex='2019-08-02'
+# region="red_snow_sukkertoppen"
+# lat_n,lon_w=  66.32144891, -53.41496170
+# lat_s,lon_e=  65.65225591, -49.61648123
+
+# # 2017-07-28 red_snow_sukkertoppen
+# lat_n,lon_w=  65.85572276, -52.46412338
+# lat_s,lon_e=  65.60115679, -51.70678723
+
+
+# # red_snow_sukkertoppen
+# region="red_snow_sukkertoppen"
+# lat_n,lon_w=  66.42200123, -53.31628834
+# lat_s,lon_e=  65.75210554, -49.95195323
+# # datex='2021-07-30'
+# # datex='2019-08-02'
+# datex='2020-07-22'
 
 
 # region="red_snow_rink"
@@ -82,6 +96,7 @@ datex='2019-08-02'
 # lat_n,lon_w=  69.36493894, -53.78286718
 # lat_s,lon_e=  69.27859525, -53.44499144
 # datex='2017-07-26'
+# datex='2020-07-22' # nothing for Lyngmarksbræen or Disko this date
 
 # region="red_surface_far_N"
 # lat_n,lon_w=  81.58913094, -30.88874646

@@ -284,6 +284,9 @@ dates=['2017-07-12','2021-07-30','2022-07-31']
 # issue with huber_w
 dates=['2017-07-12']
 
+
+dates=['2020-07-22']
+
 for datex in dates:
     
     year=datex[0:4]
