@@ -47,41 +47,41 @@ lat_s,lon_e=  65.60115679, -51.70678723
 
 
 # red_snow_sukkertoppen
-lat_n,lon_w=  66.29996022, -53.24558246
+lat_n,lon_w=  66.42200123, -53.31628834
 lat_s,lon_e=  65.75210554, -49.95195323
 datex='2021-07-30'
 datex='2019-08-02'
 
 
-region="red_snow_rink"
-lat_n,lon_w=  72.36604639, -53.42398332
-lat_s,lon_e=  72.16282891, -51.83309634
-datex='2019-08-02'
+# region="red_snow_rink"
+# lat_n,lon_w=  72.36604639, -53.42398332
+# lat_s,lon_e=  72.16282891, -51.83309634
+# datex='2019-08-02'
 
-region="red_snow_N"
-lat_n,lon_w=  81.06938651, -22.36860453
-lat_s,lon_e=  80.40332693, -20.72150342
-datex='2019-08-02'
+# region="red_snow_N"
+# lat_n,lon_w=  81.06938651, -22.36860453
+# lat_s,lon_e=  80.40332693, -20.72150342
+# datex='2019-08-02'
 
-region="red_snow_E"
-lat_n,lon_w=  71.50994597, -22.27315874
-lat_s,lon_e=  70.39353831, -21.50879502
-datex='2019-08-02'
+# region="red_snow_E"
+# lat_n,lon_w=  71.50994597, -22.27315874
+# lat_s,lon_e=  70.39353831, -21.50879502
+# datex='2019-08-02'
 
 # region="red_snow_QAS"
 # lat_n,lon_w=  61.37392375, -47.47809045
 # lat_s,lon_e=  61.18073837, -46.26391748
 # datex='2019-08-02'
 
-region="red_snow_SW"
-lat_n,lon_w=  63.87385184, -50.95036483
-lat_s,lon_e=  63.59879769, -49.78344783
-datex='2019-08-02'
+# region="red_snow_SW"
+# lat_n,lon_w=  63.87385184, -50.95036483
+# lat_s,lon_e=  63.59879769, -49.78344783
+# datex='2019-08-02'
 
-region="red_snow_Lyngmarksbræen"
-lat_n,lon_w=  69.36493894, -53.78286718
-lat_s,lon_e=  69.27859525, -53.44499144
-datex='2017-07-26'
+# region="red_snow_Lyngmarksbræen"
+# lat_n,lon_w=  69.36493894, -53.78286718
+# lat_s,lon_e=  69.27859525, -53.44499144
+# datex='2017-07-26'
 
 # region="red_surface_far_N"
 # lat_n,lon_w=  81.58913094, -30.88874646

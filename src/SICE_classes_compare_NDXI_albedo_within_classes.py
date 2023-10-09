@@ -123,7 +123,7 @@ for datex in dates:
     # lat=read_S3(f"/Users/jason/Dropbox/S3/ancil/lat.tif")
     # np.shape(lat)
     
-    #%%
+    #%% imshow
     nj = 5424 ; ni = 2959  # all greenland raster dimensions
     #SW
     i0=500 ; i1=1000
@@ -142,11 +142,14 @@ for datex in dates:
     # plt.imshow(labels_temp)
     # plt.imshow(NDXI_temp)
     # plt.imshow(b21_temp)
+    plt.axis("Off")
     plt.colorbar()
     
     #%%
     from numpy.polynomial.polynomial import polyfit
     from scipy import stats
+    from scipy.stats import gaussian_kde
+
 
     regions=['dark','light']
     for rr,region in enumerate(regions):
@@ -180,20 +183,28 @@ for datex in dates:
             plt.close()
             fig, ax = plt.subplots(figsize=(10, 10))
             
-            plt.scatter(x,y,marker='.')
-            xx=[np.min(x[v[0]]),np.max(x[v[0]])]
+            # plt.scatter(x,y,marker='.')
+            # Calculate the point density
+            
+            v=np.where(((np.isfinite(x))& (np.isfinite(y))))
+            x=x[v] ; y=y[v]
+            xy = np.vstack([x,y])
+            z = gaussian_kde(xy)(xy)
+            ax.scatter(x, y, c=z, s=20)
+
+            xx=[np.min(x),np.max(x)]
             # xx=[0,0.05]
             xx=np.array(xx)
             # plt.plot(xx, b + m * xx, '--',c='k',linewidth=2)
             print((b + m * xx[0])-(b + m * xx[1]))
-            plt.ylabel(f'broadband albedo, {region}')
+            plt.ylabel('broadband albedo')#', {region}')
             plt.xlabel('NDIX=(R_665 nm-R_560 nm)/(R_665 nm+R_560 nm)')
-            plt.title('Sukkertoppen ice cap red snow, 2 August 2019')
+            # plt.title('Sukkertoppen ice cap red snow, 2 August 2019')
             yy0=0.615
-            plt.hlines(yy0,xx[0],xx[1],color='k')
+            # plt.hlines(yy0,xx[0],xx[1],color='k')
             yy1=0.48
-            plt.hlines(yy1,xx[0],xx[1],color='k')
-            print(yy1-yy0)
+            # plt.hlines(yy1,xx[0],xx[1],color='k')
+            print(f'range of albedo {yy1-yy0}')
             
             if ly == 'x':plt.show()
             
