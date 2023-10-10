@@ -269,23 +269,20 @@ n_bands = len(bands)
 
 region_name='Greenland'
 datex='2019-08-02'
-# run successfully then problems
-dates=['2017-07-28','2019-08-02','2020-07-22']
 # run successfully
+dates=['2019-08-02'] # incomplete re-labeling for red snow
 dates=['2017-07-28','2021-07-30']
+dates=['2020-07-22']
 
 
-
-dates=['2019-08-02'] # incomplete re-labeling
-
-# still to run
-dates=['2017-07-12','2021-07-30','2022-07-31']
+# still to run successfully
+dates=['2017-07-12','2022-07-31']
 
 # issue with huber_w
 dates=['2017-07-12']
 
 
-dates=['2020-07-22']
+dates=["2022-07-31"]
 
 for datex in dates:
     
@@ -386,7 +383,8 @@ for datex in dates:
     #%%
 
         print(feature)
-        print('     mean',np.nanmean(masked),'median',np.nanmedian(masked),'stdev',np.nanstd(masked))
+        n_valid=np.count_nonzero(~np.isnan(masked))
+        print('     mean',np.nanmean(masked),'median',np.nanmedian(masked),'stdev',np.nanstd(masked),n_valid)
     
         do_histogram = 1
         if do_histogram and show_plots:
@@ -395,9 +393,10 @@ for datex in dates:
             fig, ax = plt.subplots(figsize=(8, 6))
 
             plt.hist(temp)  # plt.imshow(r)
-            plt.title(f"{datex} {feature} OLCI: {band}")
+            plt.title(f"{datex} {feature} OLCI {band} N valid = {n_valid}",fontsize=16)
+            plt.xlabel('reflectance in OLCI band '+band)
+            plt.ylabel('count of pixels')
             plt.show()
-    
     
     # %% test multi label array loading
     # if show_plots:

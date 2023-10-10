@@ -37,56 +37,65 @@ region="red_snow_disko"
 lat_n,lon_w=  69.89715506, -53.86865057
 lat_s,lon_e=  69.37465286, -52.14642320
 datex='2020-07-22' # nothing for Lyngmarksbræen or Disko this date
+datex="2022-07-31" # 
 
-region="red_snow_NNW"
-lat_n,lon_w=  82.13698217, -59.46714861
-lat_s,lon_e=  81.75274274, -56.50843801
-datex='2020-07-22' # nothing for Lyngmarksbræen or Disko this date
+# region="red_snow_NNW"
+# lat_n,lon_w=  82.13698217, -59.46714861
+# lat_s,lon_e=  81.75274274, -56.50843801
+# datex='2020-07-22' # nothing for Lyngmarksbræen or Disko this date
 
-region="red_snow_Ingia"
-lat_n,lon_w=  72.44657169, -53.70165793
-lat_s,lon_e=  72.16005336, -51.79757873
-datex='2020-07-22' # nothing for Lyngmarksbræen or Disko this date
-
-
-region="red_snow_north_ice_cap"
-lat_n,lon_w=  77.15264291, -69.83415629
-lat_s,lon_e=  76.77444794, -66.00702668
-datex='2020-07-22' # 
+# region="red_snow_Ingia"
+# lat_n,lon_w=  72.44657169, -53.70165793
+# lat_s,lon_e=  72.16005336, -51.79757873
+# datex='2020-07-22' # nothing for Lyngmarksbræen or Disko this date
 
 
-region="red_snow_ingefield"
-lat_n,lon_w= 78.30730042, -72.63508627
-lat_s,lon_e=  78.13976596, -69.17618255
-datex='2020-07-22' # 
+# region="red_snow_north_ice_cap"
+# lat_n,lon_w=  77.15264291, -69.83415629
+# lat_s,lon_e=  76.77444794, -66.00702668
+# datex='2020-07-22' # 
 
-region="dark_ice_CW"
-lat_n,lon_w= 67.71613407, -49.42817140
-lat_s,lon_e=  67.44423395, -48.20259180
-datex='2020-07-22' # 
 
-region="darkest_ice_SW"
-lat_n,lon_w= 65.84821040, -50.57043663
-lat_s,lon_e=  65.59429189, -49.68200145
-datex='2020-07-22' # 
+# region="red_snow_ingefield"
+# lat_n,lon_w= 78.30730042, -72.63508627
+# lat_s,lon_e=  78.13976596, -69.17618255
+# datex='2020-07-22' # 
+# datex="2022-07-31"
 
-region="flooded_snow"
-lat_n,lon_w= 67.26267436, -48.07655311
-lat_s,lon_e=  66.54748752, -47.35578913
-datex='2020-07-22' # 
+# region="dark_ice_CW"
+# lat_n,lon_w= 67.71613407, -49.42817140
+# lat_s,lon_e=  67.44423395, -48.20259180
+# # datex='2020-07-22' # 
+# datex="2022-07-31" # no good
 
-region="red_snow_nussuaq"
-lat_n,lon_w= 70.76287368, -53.33050709
-lat_s,lon_e=  70.16456482, -50.94977724
-datex='2020-07-22' # no good this date
+# region="dark_ice_russel"
+# lat_n,lon_w= 67.40817564, -49.66974025
+# lat_s,lon_e=  66.90277430, -48.24903528
+# datex="2022-07-31" # 
+
+# region="darkest_ice_SW"
+# lat_n,lon_w= 65.84821040, -50.57043663
+# lat_s,lon_e=  65.59429189, -49.68200145
+# datex='2020-07-22' # 
+
+# region="flooded_snow"
+# lat_n,lon_w= 67.26267436, -48.07655311
+# lat_s,lon_e=  66.54748752, -47.35578913
+# datex='2020-07-22' # 
+
+# region="red_snow_nussuaq"
+# lat_n,lon_w= 70.76287368, -53.33050709
+# lat_s,lon_e=  70.16456482, -50.94977724
+# datex='2020-07-22' # no good this date
 
 # region="red_snow_sukkertoppen"
-# lat_n,lon_w=  66.32144891, -53.41496170
-# lat_s,lon_e=  65.65225591, -49.61648123
+# # lat_n,lon_w=  66.32144891, -53.41496170
+# # lat_s,lon_e=  65.65225591, -49.61648123
 
-# # 2017-07-28 red_snow_sukkertoppen
-# lat_n,lon_w=  65.85572276, -52.46412338
+# # # 2017-07-28 red_snow_sukkertoppen
+# lat_n,lon_w=  66.32144891, -53.41496170
 # lat_s,lon_e=  65.60115679, -51.70678723
+# datex="2022-07-31" # 
 
 
 # # red_snow_sukkertoppen
