@@ -33,7 +33,8 @@ def compute_weighted_mean(w,d):
     return sum(w * d) / sum(w)
 
 def tukey_w(w,d,sigma):
-    # Huber weights, by variance for each band to allow higher prediction skill
+    # Tukey biweights, by variance for each band to allow higher prediction skill
+    
 
     break_p = 4.685
     ml_est = sum(w * d) / sum(w)
@@ -79,6 +80,12 @@ def date_format(date_string):
            return 'err'
        return "OK"
    
+def open_shp(shp_f):
+    label_gdf = gpd.read_file(shp_f).to_crs("epsg:3413")
+    shps = json.loads(label_gdf.exterior.to_json())['features']
+    
+    return shps
+    
 def freedman_bins(df): 
     quartiles = df.quantile([0.25, 0.75])
     iqr = quartiles.loc[0.75] - quartiles.loc[0.25]
@@ -90,11 +97,15 @@ def freedman_bins(df):
     return int(np.ceil(bins))
     
 class ClassifierSICE():
+    
+    """ Surface type classifier for SICE, 
+    using Sentinel-3 Top of the Atmosphere reflectances (r_TOA) """
+    
     def __init__(self):
             self.src_folder = os.getcwd()
             self.base_folder = os.path.abspath('..')
             self.training_bands = ["r_TOA_02", "r_TOA_04", "r_TOA_06", "r_TOA_08", "r_TOA_21"]
-            self.classes = ['dark_ice','bright_ice','red_ice','flooded_snow','melted_snow','dry_snow']
+            self.classes = ['dark_ice','bright_ice','red_ice','lakes','flooded_snow','melted_snow','dry_snow']
             
     def get_training_data(self,polar = None):
         
@@ -114,7 +125,7 @@ class ClassifierSICE():
             dictionarty of training data
         '''
         
-        shp_files = glob.glob(self.base_folder + os.sep + '**' + os.sep + '**.shp', recursive=True)
+        shp_files = glob.glob(self.base_folder + os.sep + 'ROIs' + os.sep + '**' + os.sep + '**.shp', recursive=True)
         training_dates = np.unique([d.split(os.sep)[-2].replace('-','_') for d in shp_files])
         dataset_ids = ['sice_500_' + d + '.nc' for d in training_dates]
         regions = ([d.split(os.sep)[-4] for d in shp_files])
@@ -136,15 +147,9 @@ class ClassifierSICE():
             for f in self.classes:
                 
                 shp = [s for s in shp_files_date if f.split('_')[0] in s]
-                
-                label_shps = []
-                
-                for s in shp: 
-                    label_gdf = gpd.read_file(s).to_crs("epsg:3413")
-                    shps = json.loads(label_gdf.exterior.to_json())['features']
-                    label_shps.append(shps)
-                   
+                label_shps = [open_shp(s) for s in shp]
                 label_shps = [item for sublist in label_shps for item in sublist]    
+                
                 
                 x = np.array(ds[self.training_bands[0]].x)
                 y = np.array(ds[self.training_bands[0]].y)
@@ -152,11 +157,12 @@ class ClassifierSICE():
                 mask = (np.ones_like(xgrid) * False).astype(bool)
                 
                 for ls in label_shps:
-                    x_poly, y_poly = map(list, zip(*ls['geometry']['coordinates']))
-                    p = path.Path(np.column_stack((x_poly,y_poly)))
-                    idx_poly = p.contains_points(np.column_stack((xgrid.ravel(),ygrid.ravel())))
-                    mask.ravel()[idx_poly] = True
-                
+                    if ls['geometry'] is not None:
+                        x_poly, y_poly = map(list, zip(*ls['geometry']['coordinates']))
+                        p = path.Path(np.column_stack((x_poly,y_poly)))
+                        idx_poly = p.contains_points(np.column_stack((xgrid.ravel(),ygrid.ravel())))
+                        mask.ravel()[idx_poly] = True
+                    
                 training_data[d][f] = {k:np.array(ds[k])[mask] for k in self.training_bands}
                 #training_data[d][f] = {k:np.array(ds[k].where(mask))[mask] for k in self.training_bands}
                 
@@ -195,6 +201,8 @@ class ClassifierSICE():
             num_rows = -(-len(column_names) // 2)
             fig, axes = plt.subplots(nrows=num_rows, ncols=2, figsize=(22, 12), gridspec_kw={'hspace': 0.5})
             axes = axes.flatten()
+                
+                
             
             for i,col in enumerate(column_names):
                 if 'date' not in col:
@@ -225,6 +233,7 @@ class ClassifierSICE():
                     mu = compute_weighted_mean(w, x)
                     
                     x_weigted = x[w>0]
+                    sigma = np.nanstd(x_weigted)
                     
                     y_weighted = ((1 / (np.sqrt(2 * np.pi) * sigma)) *
                          np.exp(-0.5 * (1 / sigma * (x_weigted - mu))**2)) 
@@ -248,7 +257,12 @@ class ClassifierSICE():
                         mask = df_data['date']==date_id
                         date_df = df_data[col][mask.squeeze()]
                         date_data_std = np.nanstd(date_df)
+                        no_points = len(date_df)
+                        
                         date_name = t_days[int(date_id)]
+                        
+                        print(f'{no_points} of {f} on {date_name}')
+                        
                         #print(f'Band {col} sigma of {f} at {date_name}: {date_data_std}')
                         bins = freedman_bins(date_df)
                         ax.hist(date_df, bins=bins, alpha=1, density=True,zorder=-1,\
@@ -414,8 +428,8 @@ class ClassifierSICE():
             
             for n in np.arange(n_features):
                 for b in np.arange(n_bands):
-                    w = w_all[:,b][train_label  == n]
-                    d = train_data[:,b][train_label == n]
+                    w = w_all[:,b][train_label==n]
+                    d = train_data[:,b][train_label==n]
                     sigma = np.std(d)
                     for i in no_i:
                         w = tukey_w(w,d,sigma)
@@ -594,7 +608,7 @@ class ClassifierSICE():
                 print(f'{d} does not exist on the thredds server')
         return prediction_data
         
-    def predict_svm(self,dates_to_predict,cor=10,model=None,export=None):
+    def predict_svm(self,dates_to_predict,cor=10,model=None,export=None,training_predict=False):
         
         self.model = model
         
@@ -603,6 +617,12 @@ class ClassifierSICE():
                 self.model,data_split = self.train_svm()
        
         print('Loading Bands for Prediction Dates:')
+        
+        if training_predict:
+            shp_files = glob.glob(self.base_folder + os.sep + 'ROIs' + os.sep + '**' + os.sep + '**.shp', recursive=True)
+            dates_to_predict = np.unique([d.split(os.sep)[-2].replace('-','_') for d in shp_files])
+        
+        
         self.prediction_data = self.get_prediction_data(dates_to_predict)
         
         if self.prediction_data is None:
