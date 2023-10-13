@@ -15,7 +15,11 @@ classify = sm.ClassifierSICE()
 
 ###### Import Training Data ######
 
-training_data = classify.get_training_data()
+date = None
+
+date = ['2019-08-02']
+
+training_data = classify.get_training_data(date=date)
 
 #%%
 
@@ -32,6 +36,8 @@ model,data_split = classify.train_svm(training_data=training_data)
 #%%
 
 ###### Test Model ######
+
+# Only for tesiting, not essential. Only work with more than one training date
 
 classify.test_svm(model=model,data_split=data_split)
 

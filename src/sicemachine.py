@@ -104,10 +104,10 @@ class ClassifierSICE():
     def __init__(self):
             self.src_folder = os.getcwd()
             self.base_folder = os.path.abspath('..')
-            self.training_bands = ["r_TOA_02", "r_TOA_04", "r_TOA_06", "r_TOA_08", "r_TOA_21"]
-            self.classes = ['dark_ice','bright_ice','red_ice','lakes','flooded_snow','melted_snow','dry_snow']
+            self.training_bands = ["r_TOA_02", "r_TOA_04", "r_TOA_06", "r_TOA_08", "r_TOA_21","sza"]
+            self.classes = ['dark_ice','bright_ice','red_snow','lakes','flooded_snow','melted_snow','dry_snow']
             
-    def get_training_data(self,polar = None):
+    def get_training_data(self,date = None,polar = None):
         
         '''Imports training from thredds server using OPeNDAP.
         The training dates,area and features are defined by the shapefiles in the /labels folder
@@ -127,6 +127,15 @@ class ClassifierSICE():
         
         shp_files = glob.glob(self.base_folder + os.sep + 'ROIs' + os.sep + '**' + os.sep + '**.shp', recursive=True)
         training_dates = np.unique([d.split(os.sep)[-2].replace('-','_') for d in shp_files])
+        date = [d.replace('-','_') for d in date]
+        
+        if date: 
+            training_dates =  [d for d in training_dates if d in date]
+        
+        if len(training_dates) == 0: 
+            print(f"{date} does not exist")
+            return
+        
         dataset_ids = ['sice_500_' + d + '.nc' for d in training_dates]
         regions = ([d.split(os.sep)[-4] for d in shp_files])
         features = np.unique([d.split(os.sep)[-1][:-4] for d in shp_files])
