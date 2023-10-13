@@ -141,7 +141,7 @@ class ClassifierSICE():
         for d,ref,re in zip(training_dates,dataset_ids,regions):     
             print(f"Getting Training Data for {d}")
             training_data[d] = {}
-            ds = xr.open_dataset(f'https://thredds.geus.dk/thredds/dodsC/SICEvEDC_500m/Greenland/{ref}')
+            ds = xr.open_dataset(f'https://thredds.geus.dk/thredds/dodsC/SICEvEDC_500m/{re}/{ref}')
             shp_files_date = [s for s in shp_files if d in s.replace('-','_')]
             
             for f in self.classes:
@@ -261,7 +261,7 @@ class ClassifierSICE():
                         
                         date_name = t_days[int(date_id)]
                         
-                        print(f'{no_points} of {f} on {date_name}')
+                        #print(f'{no_points} of {f} on {date_name}')
                         
                         #print(f'Band {col} sigma of {f} at {date_name}: {date_data_std}')
                         bins = freedman_bins(date_df)
