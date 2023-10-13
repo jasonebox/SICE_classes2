@@ -15,7 +15,7 @@ classify = sm.ClassifierSICE()
 
 ###### Import Training Data ######
 
-training_data = classify.get_prediction_data()
+training_data = classify.get_training_data()
 
 #%%
 
