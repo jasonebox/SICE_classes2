@@ -17,7 +17,7 @@ classify = sm.ClassifierSICE()
 
 date = None
 
-date = ['2019-08-02']
+date = ['2021-07-30']
 
 training_data = classify.get_training_data(date=date)
 
@@ -33,16 +33,21 @@ classify.plot_training_data(training_data=training_data)
 
 model,data_split = classify.train_svm(training_data=training_data)
 
+##### 
+
 #%%
 
 ###### Test Model ######
 
-# Only for tesiting, not essential. Only work with more than one training date
+# Only for tesiting, not essential. Only works with more than one training date
 
 classify.test_svm(model=model,data_split=data_split)
 
 
 #%%
+
+##### 
+# load pickle 
 
 year = 2019
 year_range = np.arange(year,year+1)

@@ -104,7 +104,8 @@ class ClassifierSICE():
     def __init__(self):
             self.src_folder = os.getcwd()
             self.base_folder = os.path.abspath('..')
-            self.training_bands = ["r_TOA_02", "r_TOA_04", "r_TOA_06", "r_TOA_08", "r_TOA_21","sza"]
+            self.training_bands = ["r_TOA_02", "r_TOA_04", "r_TOA_06", "r_TOA_08", "r_TOA_21"]
+            # self.training_bands = ["r_TOA_02", "r_TOA_04", "r_TOA_06", "r_TOA_08", "r_TOA_21",'sza'] sza idea?
             self.classes = ['dark_ice','bright_ice','red_snow','lakes','flooded_snow','melted_snow','dry_snow']
             
     def get_training_data(self,date = None,polar = None):
@@ -173,6 +174,7 @@ class ClassifierSICE():
                         mask.ravel()[idx_poly] = True
                     
                 training_data[d][f] = {k:np.array(ds[k])[mask] for k in self.training_bands}
+                #training_data[d][f]['sza'] = {np.cos(np.radians(np.array(ds['sza'])[mask]))}
                 #training_data[d][f] = {k:np.array(ds[k].where(mask))[mask] for k in self.training_bands}
                 
                 ds.close()
@@ -196,6 +198,9 @@ class ClassifierSICE():
             data_all = []
             for i,d in enumerate(t_days):
                 data = np.array([training_data[d][f][b] for b in self.training_bands]).T
+                
+                
+                
                 data[data>1] = np.nan
                 data[data<0.001] = np.nan
                 dates = np.ones_like(data[:,0]) * i
