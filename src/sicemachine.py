@@ -24,6 +24,7 @@ from matplotlib import path
 import matplotlib.pyplot as plt
 import warnings
 import colorsys
+import traceback
 import random
 from multiprocessing import set_start_method,get_context
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -618,8 +619,10 @@ class ClassifierSICE():
                 xgrid,ygrid = np.meshgrid(x,y)
                 prediction_data[d]['meta'] = {'x' : xgrid, 'y' : ygrid,'crs' : crs}
                 ds.close()
-            except: 
+            except Exception as e: 
                 print(f'{d} does not exist on the thredds server')
+                
+                
         return prediction_data
         
     def predict_svm(self,dates_to_predict,cor=10,model=None,export=None,training_predict=False):
@@ -703,6 +706,7 @@ class ClassifierSICE():
         height=z.shape[0],
         width=z.shape[1],
         count=1,
+        compress='lzw',
         dtype=z.dtype,
         crs=crs,
         transform=transform,
