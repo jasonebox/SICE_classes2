@@ -17,9 +17,9 @@ classify = sm.ClassifierSICE()
 
 date = None
 
-date = ['2021-07-30']
+#date = ['2021-07-30']
 
-training_data = classify.get_training_data(date=date)
+training_data = classify.get_training_data(d_t=date)
 
 #%%
 
