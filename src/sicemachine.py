@@ -18,15 +18,20 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import confusion_matrix,accuracy_score
 import glob
 import json
+import time
 import datetime
 import geopandas
 from matplotlib import path
 import matplotlib.pyplot as plt
 import warnings
+import logging
 import colorsys
 import traceback
+import matplotlib.pyplot as plt 
+from matplotlib.colors import ListedColormap
 import random
-from multiprocessing import set_start_method,get_context
+import pickle
+
 warnings.filterwarnings("ignore", category=FutureWarning)
 
 
@@ -103,11 +108,29 @@ class ClassifierSICE():
     using Sentinel-3 Top of the Atmosphere reflectances (r_TOA) """
     
     def __init__(self):
+        
             self.src_folder = os.getcwd()
             self.base_folder = os.path.abspath('..')
             self.training_bands = ["r_TOA_02", "r_TOA_04", "r_TOA_06", "r_TOA_08", "r_TOA_21"]
             # self.training_bands = ["r_TOA_02", "r_TOA_04", "r_TOA_06", "r_TOA_08", "r_TOA_21",'sza'] sza idea?
             self.classes = ['dark_ice','bright_ice','red_snow','lakes','flooded_snow','melted_snow','dry_snow']
+            self.colours  = ['#005AFF', '#5974AF', '#02D26E74', '#800080', '#03EDFE', '#04A0E4F5', '#05E9FEFF']
+            
+            logpath = self.base_folder + os.sep + 'logs'   
+            
+            if not os.path.exists(logpath):
+                os.makedirs(logpath)
+                    
+            logging.basicConfig(
+                    format='%(asctime)s [%(levelname)s] %(name)s - %(message)s',
+                    level=logging.INFO,
+                    datefmt='%Y-%m-%d %H:%M:%S',
+                    handlers=[
+                        logging.FileHandler(logpath + os.sep + f'sicemachine_{time.strftime("%Y_%m_%d",time.localtime())}.log'),
+                        logging.StreamHandler()
+                    ])
+
+            
             
     def get_training_data(self,d_t = None,polar = None):
         
@@ -348,7 +371,7 @@ class ClassifierSICE():
                 y = cl[:,1]
                 class_int = int(np.unique(cl[:,2]))
                 class_name = features[class_int]
-                
+                #
                 ax.plot(x,y, color = color_multi[class_int],linewidth=6,\
                         label=f'{class_name}',zorder=1)
                 ax.plot(x,y, color ='black',linewidth=7,\
@@ -369,16 +392,16 @@ class ClassifierSICE():
                     
         return
                 
-    def train_svm(self,training_data=None,c=1,weights=True):
+    def train_svm(self,training_data=None,c=1,weights=True,kernel='rbf',test=None,export=None):
         
         if not training_data:
             training_data = self.get_training_data()
             
         t_days = list(training_data.keys())
         
-        if len(t_days) > 2:
-            testing_date = t_days[1]
-                     
+        if test:
+                testing_date = test
+                print(f'Testing Date {test}')
         else:
             testing_date = None
         
@@ -456,7 +479,7 @@ class ClassifierSICE():
             w_samples = np.ones_like(train_label)
         
         print('Training Model....')
-        model = svm.SVC(C = c, decision_function_shape="ovo")
+        model = svm.SVC(C = c, decision_function_shape="ovo",kernel=kernel)
         model.fit(train_data, train_label,sample_weight=w_samples)
         print('Done')
         
@@ -467,6 +490,10 @@ class ClassifierSICE():
                                  'test_data' : test_data[test_label==i],'test_label' : test_label[test_label==i]}        
                 
         data_split_svm['meta'] = {'testing_date' : testing_date}        
+        
+        if export: 
+            filename = self.base_folder + os.sep + 'model' + os.sep + 'model.sav'
+            pickle.dump(model, open(filename, 'wb'))
         
         return model,data_split_svm
 
@@ -502,7 +529,7 @@ class ClassifierSICE():
                 den = False
                 
                 colors = ['#1f77b4', '#ff7f0e', '#2ca02c']  # Blue, Orange, Green
-                color_multi = ['#FFA500', '#FF8C00', '#FFD700', '#FF6347', '#FFA07A', '#FF4500']
+                color_multi = ['#FFA500', '#FF8C00', '#FFD700', '#FF6347', '#FFA07A', '#FF4500', '#FF1493']
             
                 #if len([l for l in labels_pred if l not in label_test]) > 0:    
                 print(f"Plotting Band Distribution of Predicted Label(s) in Class {cl}: \n")
@@ -598,19 +625,23 @@ class ClassifierSICE():
     def get_prediction_data(self,dates_to_predict):
         
         if dates_to_predict is None:
-            print("Please Specify a Date to Predict")
+            logging.info("Please Specify a Date to Predict")
             return None
+        
+        if type(dates_to_predict) == str: 
+            dates_to_predict = [dates_to_predict]
+            
         
         for d in dates_to_predict:
             msg = date_format(d)
             if msg == 'err':
-                print(f"Incorrect date format for {d}, should be [YYYY-MM-DD] in a list!")
+                logging.info(f"Incorrect date format for {d}, should be [YYYY-MM-DD] in a list!")
                 return None
         
         dataset_ids = ['sice_500_' + d.replace('-','_') + '.nc' for d in dates_to_predict]
         prediction_data = {}
         for d,ref in zip(dates_to_predict,dataset_ids): 
-            print(f'Loading {d} ......')
+            logging.info(f'Loading {d} ......')
             try:
                 ds = xr.open_dataset(f'https://thredds.geus.dk/thredds/dodsC/SICEvEDC_500m/Greenland/{ref}')
                 prediction_data[d] = {k:np.array(ds[k]) for k in self.training_bands}
@@ -621,20 +652,32 @@ class ClassifierSICE():
                 prediction_data[d]['meta'] = {'x' : xgrid, 'y' : ygrid,'crs' : crs}
                 ds.close()
             except Exception as e: 
-                print(f'{d} does not exist on the thredds server')
+                logging.info(f'{d} does not exist on the thredds server')
                 
                 
         return prediction_data
         
-    def predict_svm(self,dates_to_predict,cor=10,model=None,export=None,training_predict=False):
+    def predict_svm(self,dates_to_predict,model=None,training_predict=False,export='tif'):
         
         self.model = model
         
+        if export not in ['tiff','tif','all','png']:
+            logging.info('Please specify a correct export format, options = [tiff, tif, all, png]')
+            return
+        elif export == 'all':
+            self.export = ['tiff','png']
+        else: 
+            self.export = [export]    
+        
+        
         if self.model is None:
-                print('Training Model:')
+                logging.info('Getting Training Data and Training Model......')
                 self.model,data_split = self.train_svm()
+        elif self.model == 'import':
+             path = self.base_folder + os.sep + 'model' + os.sep + 'model.sav'
+             self.model = pickle.load(open(path, 'rb'))
        
-        print('Loading Bands for Prediction Dates:')
+        logging.info('Loading Bands for Prediction Dates:')
         
         if training_predict:
             shp_files = glob.glob(self.base_folder + os.sep + 'ROIs' + os.sep + '**' + os.sep + '**.shp', recursive=True)
@@ -653,66 +696,76 @@ class ClassifierSICE():
         
         for d in p_days:
             self._predict_for_date(d)
-        
-        # print('initializing multiprocessing:')
-        # set_start_method("spawn")
-        
-        
-        # with get_context("spawn").Pool(cor) as p:     
-        #         p.starmap(self._predict_for_date,zip(p_days))
-        #         p.close()
-        #         p.join()
-        #         print("Done with multiprocessing")
-       
     
     def _predict_for_date(self,date):
 
-        print(f'Predicting Classes for {date}.....')
+        logging.info(f'Predicting Classes for {date}.....')
         data = np.array([self.prediction_data[date][b] for b in self.training_bands])
-        xgrid = self.prediction_data[date]['meta']['x']
-        ygrid = self.prediction_data[date]['meta']['y']
-        crs = self.prediction_data[date]['meta']['crs']
+        self.xgrid = self.prediction_data[date]['meta']['x']
+        self.ygrid = self.prediction_data[date]['meta']['y']
+        self.crs = self.prediction_data[date]['meta']['crs']
         
         mask = ~np.isnan(data[0,:,:])
         data_masked = data[:,mask].T
         
         labels_predict = self.model.predict(data_masked)
         #labels_prob = model.predict_proba(data_masked)
-        labels_grid = np.ones_like(xgrid) * np.nan
-        labels_grid[mask] = labels_predict
-        print(f'Done for {date}')
+        self.labels_grid = np.ones_like(self.xgrid) * np.nan
+        self.labels_grid[mask] = labels_predict
+        logging.info(f'Done for {date}')
+        date_out = date.replace('-','_')
         
-        f_name = self.base_folder + os.sep + "output" + os.sep + date.replace('-','_') + '_SICE_surface_classes.tif'
-        self._export_as_tiff(xgrid,ygrid,labels_grid,crs,f_name)
-        print('Done')
+        for exp in self.export:
+            logging.info(f'Saving as {exp}....')
+            out_folder = f'{self.base_folder}{os.sep}output{os.sep}{exp}'
+            if not os.path.exists(out_folder):
+                os.mkdir(out_folder)
+            self.f_name = f'{out_folder}{os.sep}{date_out}_SICE_surface_classes.{exp}'
+            self._export()
         
+        logging.info('Done')
+        
+    def _export(self):
+        exp_format = self.f_name.split('.')[-1]
+        if exp_format == 'png':
+            self._export_as_png()
+        else:
+            self._export_as_tif()
+        #getattr(self,f'_export_as_{exp_format}')
+        return None
+        
+    def _export_as_png(self):
+        cmap = ListedColormap(self.colors)
+        plt.imsave(self.f_name,self.labels_grid,cmap=cmap,dpi=600)
+        return None
     
-    def _export_as_tiff(self,x,y,z,crs,filename):
+        
+    def _export_as_tif(self):
         
         "Input: xgrid,ygrid, data paramater, the data projection, export path, name of tif file"
-       
-        resx = (x[0,1] - x[0,0])
-        resy = (y[1,0] - y[0,0])
-        transform = Affine.translation((x.ravel()[0]),(y.ravel()[0])) * Affine.scale(resx, resy)
+        
+        resx = (self.xgrid[0,1] - self.xgrid[0,0])
+        resy = (self.ygrid[1,0] - self.ygrid[0,0])
+        transform = Affine.translation((self.xgrid.ravel()[0]),(self.ygrid.ravel()[0])) * Affine.scale(resx, resy)
         
         if resx == 0:
-            resx = (x[0,0] - x[1,0])
-            resy = (y[0,0] - y[0,1])
-            transform = Affine.translation((y.ravel()[0]),(x.ravel()[0])) * Affine.scale(resx, resy)
+            resx = (self.xgrid[0,0] - self.xgrid[1,0])
+            resy = (self.ygrid[0,0] - self.ygrid[0,1])
+            transform = Affine.translation((self.ygrid.ravel()[0]),(self.xgrid.ravel()[0])) * Affine.scale(resx, resy)
             
         with rio.open(
-        filename,
+        self.f_name,
         'w',
         driver='GTiff',
-        height=z.shape[0],
-        width=z.shape[1],
+        height=self.labels_grid.shape[0],
+        width=self.labels_grid.shape[1],
         count=1,
         compress='lzw',
-        dtype=z.dtype,
-        crs=crs,
+        dtype=self.labels_grid.dtype,
+        crs=self.crs,
         transform=transform,
         ) as dst:
-            dst.write(z, 1)
+            dst.write(self.labels_grid, 1)
         
         dst.close()
         return None 
