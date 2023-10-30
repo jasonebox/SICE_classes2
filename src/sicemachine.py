@@ -111,7 +111,8 @@ class ClassifierSICE():
         
             self.src_folder = os.getcwd()
             self.base_folder = os.path.abspath('..')
-            self.training_bands = ["r_TOA_02", "r_TOA_04", "r_TOA_06", "r_TOA_08", "r_TOA_21"]
+            self.training_bands = ["r_TOA_02" ,"r_TOA_04" ,"r_TOA_06", "r_TOA_08", "r_TOA_21"]
+            #self.training_bands = ["r_TOA_02","r_TOA_03" ,"r_TOA_04","r_TOA_05" ,"r_TOA_06", "r_TOA_08", "r_TOA_21"]
             # self.training_bands = ["r_TOA_02", "r_TOA_04", "r_TOA_06", "r_TOA_08", "r_TOA_21",'sza'] sza idea?
             self.classes = ['dark_ice','bright_ice','red_snow','lakes','flooded_snow','melted_snow','dry_snow']
             self.colours  = ['#005AFF', '#5974AF', '#02D26E74', '#800080', '#03EDFE', '#04A0E4F5', '#05E9FEFF']
@@ -392,7 +393,7 @@ class ClassifierSICE():
                     
         return
                 
-    def train_svm(self,training_data=None,c=1,weights=True,kernel='rbf',test=None,export=None):
+    def train_svm(self,training_data=None,c=1,weights=True,kernel='rbf',prob=False,test=None,export=None):
         
         if not training_data:
             training_data = self.get_training_data()
@@ -453,10 +454,10 @@ class ClassifierSICE():
             test_label = np.vstack([arr for arr in test_label]).ravel() 
             
             
-       
-        if testing_date is None:
-            train_data, test_data, train_label, test_label \
-                 = train_test_split(train_data, train_label, test_size=0.10, random_state=42) 
+           # if testing_date is None:
+           #     train_data, test_data, train_label, test_label \
+           #          = train_test_split(train_data, train_label, test_size=0.1, random_state=42) 
+            
             
         
         
@@ -479,17 +480,20 @@ class ClassifierSICE():
             w_samples = np.ones_like(train_label)
         
         print('Training Model....')
-        model = svm.SVC(C = c, decision_function_shape="ovo",kernel=kernel)
+        model = svm.SVC(C = c, decision_function_shape="ovo",kernel=kernel,probability=bool(prob))
         model.fit(train_data, train_label,sample_weight=w_samples)
         print('Done')
         
-        data_split_svm = {}
-        print('Splitting dataset')
-        for i,f in enumerate(features): 
-            data_split_svm[f] = {'train_data' : train_data[train_label==i],'train_label' : train_label[train_label==i],\
-                                 'test_data' : test_data[test_label==i],'test_label' : test_label[test_label==i]}        
-                
-        data_split_svm['meta'] = {'testing_date' : testing_date}        
+        if testing_date is None:
+            data_split_svm = None
+        else:
+            data_split_svm = {}
+            print('Splitting dataset')
+            for i,f in enumerate(features): 
+                data_split_svm[f] = {'train_data' : train_data[train_label==i],'train_label' : train_label[train_label==i],\
+                                     'test_data' : test_data[test_label==i],'test_label' : test_label[test_label==i]}        
+                    
+            data_split_svm['meta'] = {'testing_date' : testing_date}        
         
         if export: 
             filename = self.base_folder + os.sep + 'model' + os.sep + 'model.sav'
@@ -511,9 +515,13 @@ class ClassifierSICE():
         
         classes = list(data_split.keys())
         
+        acc_dict = {}
+        acc_dict['meta'] = {'testing_date' : meta}
+        
+        
         for cl in classes:
             if cl !='meta':
-                print(f'Test Results for Class {cl}:')
+                #print(f'Test Results for Class {cl}:')
                 data_test = data_split[cl]['test_data']
                 label_test = data_split[cl]['test_label']
                 data_train = data_split[cl]['train_data']
@@ -522,8 +530,8 @@ class ClassifierSICE():
                 labels_pred = model.predict(data_test)
                 cm = confusion_matrix(labels_pred, label_test)
                 ac = np.round(accuracy_score(labels_pred,label_test),3)
-                
-                print(f"Plotting Band Distribution in class {cl}")
+                acc_dict[cl] = {'acc' : ac}
+                #print(f"Plotting Band Distribution in class {cl}")
                 alpha_value = 0.35
                 num_bins = 10
                 den = False
@@ -532,7 +540,7 @@ class ClassifierSICE():
                 color_multi = ['#FFA500', '#FF8C00', '#FFD700', '#FF6347', '#FFA07A', '#FF4500', '#FF1493']
             
                 #if len([l for l in labels_pred if l not in label_test]) > 0:    
-                print(f"Plotting Band Distribution of Predicted Label(s) in Class {cl}: \n")
+                #print(f"Plotting Band Distribution of Predicted Label(s) in Class {cl}: \n")
                 l_mask = np.array([True if l not in label_test else False for l in labels_pred])
                 bad_labels = data_test[l_mask,:]
                 bad_labels_cl = labels_pred[l_mask]
@@ -608,7 +616,7 @@ class ClassifierSICE():
                                         
                         
                 print(f"Accuracy of Predicting {cl}: {ac}")
-                print(f"Confusion Matrix of {cl}: \n {cm} \n")
+                #print(f"Confusion Matrix of {cl}: \n {cm} \n")
                 
                 
                 for l in list(np.unique(labels_pred)):
@@ -620,7 +628,7 @@ class ClassifierSICE():
                     print(f'Model Classified {label_name_prd} {no_l_p} times, the Correct Class was {label_name_cor} \n')
                 
                 
-        return 
+        return acc_dict
     
     def get_prediction_data(self,dates_to_predict):
         
@@ -657,9 +665,10 @@ class ClassifierSICE():
                 
         return prediction_data
         
-    def predict_svm(self,dates_to_predict,model=None,training_predict=False,export='tif'):
+    def predict_svm(self,dates_to_predict,model=None,training_predict=False,prob=False,export='tif'):
         
         self.model = model
+        self.prob = prob
         
         if export not in ['tiff','tif','all','png']:
             logging.info('Please specify a correct export format, options = [tiff, tif, all, png]')
@@ -709,11 +718,19 @@ class ClassifierSICE():
         data_masked = data[:,mask].T
         
         labels_predict = self.model.predict(data_masked)
-        #labels_prob = model.predict_proba(data_masked)
-        self.labels_grid = np.ones_like(self.xgrid) * np.nan
-        self.labels_grid[mask] = labels_predict
+        labels_grid = np.ones_like(self.xgrid) * np.nan
+        labels_grid[mask] = labels_predict
+        
+        if self.prob:
+            labels_prob = self.model.predict_proba(data_masked)
+            labels_prob = np.amax(labels_prob, axis=1, keepdims=True).ravel()
+            prob_grid = np.ones_like(self.xgrid) * np.nan
+            prob_grid[mask] = labels_prob
+            
+        
         logging.info(f'Done for {date}')
         date_out = date.replace('-','_')
+        
         
         for exp in self.export:
             logging.info(f'Saving as {exp}....')
@@ -721,26 +738,31 @@ class ClassifierSICE():
             if not os.path.exists(out_folder):
                 os.mkdir(out_folder)
             self.f_name = f'{out_folder}{os.sep}{date_out}_SICE_surface_classes.{exp}'
-            self._export()
-        
+            self._export(labels_grid)
+            
+            if self.prob:
+                self.f_name = f'{out_folder}{os.sep}{date_out}_SICE_probability.{exp}'
+                self._export(prob_grid)
+                
         logging.info('Done')
         
-    def _export(self):
+        
+    def _export(self,data):
         exp_format = self.f_name.split('.')[-1]
         if exp_format == 'png':
-            self._export_as_png()
+            self._export_as_png(data)
         else:
-            self._export_as_tif()
+            self._export_as_tif(data)
         #getattr(self,f'_export_as_{exp_format}')
         return None
         
-    def _export_as_png(self):
+    def _export_as_png(self,data):
         cmap = ListedColormap(self.colors)
-        plt.imsave(self.f_name,self.labels_grid,cmap=cmap,dpi=600)
+        plt.imsave(self.f_name,data,cmap=cmap,dpi=600)
         return None
     
         
-    def _export_as_tif(self):
+    def _export_as_tif(self,data):
         
         "Input: xgrid,ygrid, data paramater, the data projection, export path, name of tif file"
         
@@ -757,15 +779,15 @@ class ClassifierSICE():
         self.f_name,
         'w',
         driver='GTiff',
-        height=self.labels_grid.shape[0],
-        width=self.labels_grid.shape[1],
+        height=data.shape[0],
+        width=data.shape[1],
         count=1,
         compress='lzw',
-        dtype=self.labels_grid.dtype,
+        dtype=data.dtype,
         crs=self.crs,
         transform=transform,
         ) as dst:
-            dst.write(self.labels_grid, 1)
+            dst.write(data, 1)
         
         dst.close()
         return None 

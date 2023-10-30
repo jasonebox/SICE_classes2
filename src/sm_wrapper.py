@@ -35,7 +35,7 @@ classify.plot_training_data(training_data=training_data)
 
 ###### Train Model ######
 
-model,data_split = classify.train_svm(training_data=training_data,kernel='rbf',export=True)
+model,data_split = classify.train_svm(training_data=training_data,kernel='rbf',export=True,prob=True)
 
 ##### 
 
@@ -44,22 +44,41 @@ model,data_split = classify.train_svm(training_data=training_data,kernel='rbf',e
 ###### Test Model ######
 
 # Only for tesiting, not essential. Only works with more than one training date
-
+test_dict = {}
 for i in list(training_data.keys()):
     
     model_rbf,data_split_rbf = classify.train_svm(training_data=training_data,kernel='rbf',test=i)
-    classify.test_svm(model=model_rbf,data_split=data_split_rbf)
+    acc_dict = classify.test_svm(model=model_rbf,data_split=data_split_rbf)
+    test_dict[i] = {'acc_dict' : acc_dict}
+    
+#%%
+
+t_dates = list(test_dict.keys())
+classes = ['dark_ice','bright_ice','red_snow','lakes','flooded_snow','melted_snow','dry_snow']
+
+for cl in classes:
+    
+    acc_val = 0
+    
+    for no,td in enumerate(t_dates):
+        acc_val += test_dict[td]['acc_dict'][cl]['acc']
+    
+    acc_m = acc_val/len(t_dates)
+    
+    print(f'Accuracy for {cl} : {acc_m}')
+
+    
 
 
 #%%
 
 ##### 
     
-year = 2022
+year = 2023
 year_range = np.arange(year,year+1)
 
-start_season = '09-01'
-end_season = '09-11'
+start_season = '07-03'
+end_season = '07-04'
 
 start_dates = [datetime.strptime(str(y) + '-' + start_season, '%Y-%m-%d').date() for y in year_range]
 end_dates = [datetime.strptime(str(y) + '-' + end_season, '%Y-%m-%d').date() for y in year_range]
@@ -71,7 +90,7 @@ predict_training_dates = False # Set to false if you want to predict the period 
 
 ###### Predict Dates ######
        
-classify.predict_svm(dates_to_predict=days,model=model,training_predict=predict_training_dates)
+classify.predict_svm(dates_to_predict=days,model='import',training_predict=predict_training_dates,prob=True)
 
 
 
