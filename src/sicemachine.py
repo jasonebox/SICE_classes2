@@ -31,10 +31,10 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
 import random
 import pickle
-
+import sys
+warnings.filterwarnings("ignore", category=RuntimeWarning)
 warnings.filterwarnings("ignore", category=FutureWarning)
-
-
+    
 def compute_weighted_mean(w,d):
     return sum(w * d) / sum(w)
 
@@ -107,15 +107,25 @@ class ClassifierSICE():
     """ Surface type classifier for SICE, 
     using Sentinel-3 Top of the Atmosphere reflectances (r_TOA) """
     
-    def __init__(self):
+    def __init__(self,bands=False,classes=False):
         
             self.src_folder = os.getcwd()
             self.base_folder = os.path.abspath('..')
-            self.training_bands = ["r_TOA_02" ,"r_TOA_04" ,"r_TOA_06", "r_TOA_08", "r_TOA_21"]
+            
+            if not bands:    
+                self.training_bands = ["r_TOA_02" ,"r_TOA_04" ,"r_TOA_06", "r_TOA_08", "r_TOA_21"]
+            else:
+                self.training_bands = bands
+                
+            if not classes:
+                self.classes = ['dark_ice','bright_ice','red_snow','lakes','flooded_snow','melted_snow','dry_snow']
+                self.colours  = ['#005AFF', '#5974AF', '#02D26E74', '#800080', '#03EDFE', '#04A0E4F5', '#05E9FEFF']
+                
+            else:
+                self.classes
+                
             #self.training_bands = ["r_TOA_02","r_TOA_03" ,"r_TOA_04","r_TOA_05" ,"r_TOA_06", "r_TOA_08", "r_TOA_21"]
             # self.training_bands = ["r_TOA_02", "r_TOA_04", "r_TOA_06", "r_TOA_08", "r_TOA_21",'sza'] sza idea?
-            self.classes = ['dark_ice','bright_ice','red_snow','lakes','flooded_snow','melted_snow','dry_snow']
-            self.colours  = ['#005AFF', '#5974AF', '#02D26E74', '#800080', '#03EDFE', '#04A0E4F5', '#05E9FEFF']
             
             logpath = self.base_folder + os.sep + 'logs'   
             
@@ -177,7 +187,7 @@ class ClassifierSICE():
         for d,ref,re in zip(training_dates,dataset_ids,regions):     
             print(f"Getting Training Data for {d}")
             training_data[d] = {}
-            ds = xr.open_dataset(f'https://thredds.geus.dk/thredds/dodsC/SICEvEDC_500m/{re}/{ref}')
+            ds = xr.open_dataset(f'https://thredds.geus.dk/thredds/dodsC/SICE_500m/{re}/{ref}')
             shp_files_date = [s for s in shp_files if d in s.replace('-','_')]
             
             for f in self.classes:
@@ -207,7 +217,7 @@ class ClassifierSICE():
            
         return training_data
     
-    def plot_training_data(self,training_data=None):
+    def plot_training_data(self,training_data=None,output=False):
         
         if not training_data:
             training_data = self.get_training_data()
@@ -309,13 +319,30 @@ class ClassifierSICE():
                                           edgecolor='black', linewidth=1.2,histtype='step')
                         ax.hist(date_df, bins=bins, alpha=alpha_value, density=True,\
                                 label=f'{date_name}', color=color_multi[int(date_id)],zorder=-2)
-                        
+                            
+                        if output:
+                            fig_out,ax_out = plt.subplots(figsize=(10,7))
+                            ax_out.hist(date_df, bins=bins, alpha=1, density=True,zorder=-1,\
+                                              edgecolor='black', linewidth=1.2,histtype='step')
+                            ax_out.hist(date_df, bins=bins, alpha=alpha_value, density=True,\
+                                    label=f'{date_name}', color=color_multi[int(date_id)],zorder=-2)
+                            ax_out.set_title(f'Class: {f} Band: {col}',fontsize=20)
+                            ax_out.set_ylabel('Density Count',fontsize=20)
+                            ax_out.set_xlabel('Reflectance',fontsize=20)
+                            ax_out.tick_params(labelsize=16)
+                            ax_out.legend()
+                            plt.savefig(self.base_folder + os.sep + 'figs' + os.sep + f'histogram_{col}_{date_name}.png',bbox='tight')
+                            plt.close()
+                            
+                            
                         
                     ax.set_title(f'Band: {col}',fontsize=20)
                     ax.set_ylabel('Density Count',fontsize=20)
                     ax.set_xlabel('Reflectance',fontsize=20)
                     ax.tick_params(labelsize=16)
                     ax.legend()
+                    
+                    
                     
                     #### Add Combined Dist. ####
                     
@@ -326,6 +353,9 @@ class ClassifierSICE():
             plt.suptitle(f'Training Data Band Distributions of Class {f}', fontsize=30)  # Add a single title
             #plt.tight_layout()  # Adjust layout to make space for the title
             plt.show()
+            
+            
+                
             
             
         num_rows = -(-len(self.training_bands) // 2)
@@ -394,6 +424,8 @@ class ClassifierSICE():
         return
                 
     def train_svm(self,training_data=None,c=1,weights=True,kernel='rbf',prob=False,test=None,export=None):
+        
+        #enablePrint()
         
         if not training_data:
             training_data = self.get_training_data()
@@ -501,11 +533,14 @@ class ClassifierSICE():
         
         return model,data_split_svm
 
-    def test_svm(self,model=None, data_split=None, export_error=None):
+    def test_svm(self,model=None, data_split=None, export_error=None,mute=False):
         
         if data_split is None:
                 model,data_split = self.train_svm()
-            
+        #enablePrint()
+        #if mute:
+            #blockPrint()
+        
         print('Test SVM for each Class \n')
         
         meta = data_split['meta']['testing_date']
@@ -513,122 +548,140 @@ class ClassifierSICE():
         if meta is not None: 
             print(f"The model is being tested on an independent date: {meta}")
         
-        classes = list(data_split.keys())
+        #classes = list(data_split.keys())
         
         acc_dict = {}
         acc_dict['meta'] = {'testing_date' : meta}
         
         
-        for cl in classes:
-            if cl !='meta':
-                #print(f'Test Results for Class {cl}:')
-                data_test = data_split[cl]['test_data']
-                label_test = data_split[cl]['test_label']
-                data_train = data_split[cl]['train_data']
-                
-                #Predicting on Test Data:
-                labels_pred = model.predict(data_test)
-                cm = confusion_matrix(labels_pred, label_test)
-                ac = np.round(accuracy_score(labels_pred,label_test),3)
-                acc_dict[cl] = {'acc' : ac}
-                #print(f"Plotting Band Distribution in class {cl}")
-                alpha_value = 0.35
-                num_bins = 10
-                den = False
-                
-                colors = ['#1f77b4', '#ff7f0e', '#2ca02c']  # Blue, Orange, Green
-                color_multi = ['#FFA500', '#FF8C00', '#FFD700', '#FF6347', '#FFA07A', '#FF4500', '#FF1493']
+        for cl in self.classes:
             
-                #if len([l for l in labels_pred if l not in label_test]) > 0:    
-                #print(f"Plotting Band Distribution of Predicted Label(s) in Class {cl}: \n")
-                l_mask = np.array([True if l not in label_test else False for l in labels_pred])
-                bad_labels = data_test[l_mask,:]
-                bad_labels_cl = labels_pred[l_mask]
-                good_labels = data_test[~l_mask,:]
+            #print(f'Test Results for Class {cl}:')
+            data_test = data_split[cl]['test_data']
+            label_test = data_split[cl]['test_label']
+            data_train = data_split[cl]['train_data']
+            
+            #Predicting on Test Data:
+            labels_pred = model.predict(data_test)
+            cm = confusion_matrix(labels_pred, label_test)
+            ac = np.round(accuracy_score(labels_pred,label_test),3)
+            
+            acc_dict[cl] = {'acc' : ac}
+            #print(f"Plotting Band Distribution in class {cl}")
+            alpha_value = 0.35
+            num_bins = 10
+            den = False
+            
+            colors = ['#1f77b4', '#ff7f0e', '#2ca02c']  # Blue, Orange, Green
+            color_multi = ['#FFA500', '#FF8C00', '#FFD700', '#FF6347', '#FFA07A', '#FF4500', '#FF1493']
+        
+            #if len([l for l in labels_pred if l not in label_test]) > 0:    
+            #print(f"Plotting Band Distribution of Predicted Label(s) in Class {cl}: \n")
+            l_mask = np.array([True if l not in label_test else False for l in labels_pred])
+            bad_labels = data_test[l_mask,:]
+            bad_labels_cl = labels_pred[l_mask]
+            good_labels = data_test[~l_mask,:]
+            
+            bad_labels_val = np.column_stack((bad_labels, bad_labels_cl))
+            bad_labes_col = self.training_bands + ['label']
+            bad_labels = pd.DataFrame(bad_labels_val,columns=[bad_labes_col])
+            good_labels = pd.DataFrame(good_labels,columns=[self.training_bands])
+            train_labels = pd.DataFrame(data_train,columns=[self.training_bands])
+            
+            # Get column names from the DataFrames
+            column_names = good_labels.columns
+            num_rows = -(-len(column_names) // 2) 
+            
+            # Creating overlapping histogram plots for all columns from both DataFrames
+            fig, axes = plt.subplots(nrows=num_rows, ncols=2, figsize=(12, 12))
+            axes = axes.flatten()
+            for i, col in enumerate(column_names):
+                ax = axes[i]
                 
-                bad_labels_val = np.column_stack((bad_labels, bad_labels_cl))
-                bad_labes_col = self.training_bands + ['label']
-                bad_labels = pd.DataFrame(bad_labels_val,columns=[bad_labes_col])
-                good_labels = pd.DataFrame(good_labels,columns=[self.training_bands])
-                train_labels = pd.DataFrame(data_train,columns=[self.training_bands])
+                bins = freedman_bins(good_labels[col])
                 
-                # Get column names from the DataFrames
-                column_names = good_labels.columns
-                num_rows = -(-len(column_names) // 2) 
+                good_labels[col].hist(ax=ax, bins=bins, alpha=alpha_value,\
+                                      label='Correct Labelled Test Data', color=colors[0],\
+                                      histtype='barstacked', density=den)
+                    
+                good_labels[col].hist(ax=ax, bins=bins, alpha=1, density=den,\
+                                      edgecolor='black', linewidth=1.2,histtype='step')
+                """
+                bad_labels[col].hist(ax=ax, bins=num_bins, alpha=alpha_value,\
+                                     label='Bad Labelled Test Data',  color=colors[1],\
+                                     histtype='barstacked', density=True)
+                """
                 
-                # Creating overlapping histogram plots for all columns from both DataFrames
-                fig, axes = plt.subplots(nrows=num_rows, ncols=2, figsize=(12, 12))
-                axes = axes.flatten()
-                for i, col in enumerate(column_names):
-                    ax = axes[i]
+                for class_id in np.unique(bad_labels['label']):
                     
-                    bins = freedman_bins(good_labels[col])
-                    
-                    good_labels[col].hist(ax=ax, bins=bins, alpha=alpha_value,\
-                                          label='Correct Labelled Test Data', color=colors[0],\
-                                          histtype='barstacked', density=den)
-                        
-                    good_labels[col].hist(ax=ax, bins=bins, alpha=1, density=den,\
-                                          edgecolor='black', linewidth=1.2,histtype='step')
-                    """
-                    bad_labels[col].hist(ax=ax, bins=num_bins, alpha=alpha_value,\
-                                         label='Bad Labelled Test Data',  color=colors[1],\
-                                         histtype='barstacked', density=True)
-                    """
-                    
-                    for class_id in np.unique(bad_labels['label']):
-                        
-                        if len(bad_labels)/len(good_labels) < 0.01: 
-                            pass
-                            #class_df = bad_labels[col]
-                        else:
-                            mask = bad_labels['label']==class_id
-                            class_df = bad_labels[col][mask.squeeze()]
-                            class_name = classes[int(class_id)]
-                            bins = freedman_bins(class_df)
-                         
-                            ax.hist(class_df, bins=bins, alpha=alpha_value, density=den,\
-                                    label=f'Test Data Labelled Wrongly as {class_name}', color=color_multi[int(class_id)])
-                            ax.hist(class_df, bins=bins, alpha=1, density=den,\
-                                                 edgecolor='black', linewidth=1.2,histtype='step')
-                    
-                    bins = freedman_bins(train_labels[col])
-              
-                    train_labels[col].hist(ax=ax, bins=bins, alpha=alpha_value,\
-                                         label='Traning Data', color=colors[2],\
-                                         histtype='barstacked', density=den)
-                    train_labels[col].hist(ax=ax, bins=bins, alpha=1, density=den,\
-                                         edgecolor='black', linewidth=1.2,histtype='step')
+                    if len(bad_labels)/len(good_labels) < 0.01: 
+                        pass
+                        #class_df = bad_labels[col]
+                    else:
+                        mask = bad_labels['label']==class_id
+                        class_df = bad_labels[col][mask.squeeze()]
+                        class_name = self.classes[int(class_id)]
+                        bins = freedman_bins(class_df)
+                     
+                        ax.hist(class_df, bins=bins, alpha=alpha_value, density=den,\
+                                label=f'Test Data Labelled Wrongly as {class_name}', color=color_multi[int(class_id)])
+                        ax.hist(class_df, bins=bins, alpha=1, density=den,\
+                                             edgecolor='black', linewidth=1.2,histtype='step')
                 
-                    #bad_labels[col].hist(ax=ax, bins=num_bins, alpha=1, density=True,\
-                    #                     edgecolor='black', linewidth=1.2,histtype='step')
-                   
-                    
-                    ax.set_title(f'Band: {col}',fontsize=20)
-                    ax.legend()
-                    
-                if len(column_names) % 2 == 1:
-                    fig.delaxes(axes[-1])    
-                    
-                plt.suptitle(f'Band Distributions of Predicted Class {cl}', fontsize=20)  # Add a single title
-                plt.tight_layout()  # Adjust layout to make space for the title
-                plt.show()
-                                        
-                        
-                print(f"Accuracy of Predicting {cl}: {ac}")
-                #print(f"Confusion Matrix of {cl}: \n {cm} \n")
+                bins = freedman_bins(train_labels[col])
+          
+                train_labels[col].hist(ax=ax, bins=bins, alpha=alpha_value,\
+                                     label='Traning Data', color=colors[2],\
+                                     histtype='barstacked', density=den)
+                train_labels[col].hist(ax=ax, bins=bins, alpha=1, density=den,\
+                                     edgecolor='black', linewidth=1.2,histtype='step')
+            
+                #bad_labels[col].hist(ax=ax, bins=num_bins, alpha=1, density=True,\
+                #                     edgecolor='black', linewidth=1.2,histtype='step')
+               
                 
+                ax.set_title(f'Band: {col}',fontsize=20)
+                ax.legend()
                 
-                for l in list(np.unique(labels_pred)):
+            if len(column_names) % 2 == 1:
+                fig.delaxes(axes[-1])    
+                
+            plt.suptitle(f'Band Distributions of Predicted Class {cl}', fontsize=20)  # Add a single title
+            plt.tight_layout()  # Adjust layout to make space for the title
+            plt.show()
+                                    
                     
-                    no_l_p = len(labels_pred[labels_pred==l])
-                    label_name_prd = classes[int(l)] 
-                    label_name_cor = cl
-                    
-                    print(f'Model Classified {label_name_prd} {no_l_p} times, the Correct Class was {label_name_cor} \n')
+            print(f"Accuracy of Predicting {cl}: {ac}")
+            #print(f"Confusion Matrix of {cl}: \n {cm} \n")
+            
+            
+            for l in list(np.unique(labels_pred)):
                 
+                no_l_p = len(labels_pred[labels_pred==l])
+                label_name_prd = self.classes[int(l)] 
+                label_name_cor = cl
                 
-        return acc_dict
+                print(f'Model Classified {label_name_prd} {no_l_p} times, the Correct Class was {label_name_cor} \n')
+                
+        #enablePrint()
+        
+        #### TOTAL Confusion Matrix ####
+        
+        test_label_all = np.concatenate([data_split[d]['test_label'] for d in self.classes])
+        test_data_all = np.vstack([data_split[d]['test_data'] for d in self.classes])
+        
+        labels_pred = model.predict(test_data_all)
+        cm = confusion_matrix(labels_pred, test_label_all)
+        
+        
+         
+        for i,cl in enumerate(self.classes):
+    
+            acc_dict[cl] = {'omm' : ((sum(cm[:,i])-cm[i,i])/(cm[i,i]))}
+            acc_dict[cl] = {'com' : ((sum(cm[i,:])-cm[i,i])/(cm[i,i]))}
+            acc_dict[cl] = {'ratio' : (len(data_split[cl]['train_data'])/len(data_split[cl]['test_data']))}
+        
+        return acc_dict,cm
     
     def get_prediction_data(self,dates_to_predict):
         
@@ -651,7 +704,7 @@ class ClassifierSICE():
         for d,ref in zip(dates_to_predict,dataset_ids): 
             logging.info(f'Loading {d} ......')
             try:
-                ds = xr.open_dataset(f'https://thredds.geus.dk/thredds/dodsC/SICEvEDC_500m/Greenland/{ref}')
+                ds = xr.open_dataset(f'https://thredds.geus.dk/thredds/dodsC/SICE_500m/Greenland/{ref}')
                 prediction_data[d] = {k:np.array(ds[k]) for k in self.training_bands}
                 x = np.array(ds[self.training_bands[0]].x)
                 y = np.array(ds[self.training_bands[0]].y)
