@@ -222,8 +222,14 @@ class ClassifierSICE():
         if not training_data:
             training_data = self.get_training_data()
         
+        
+        
+        
         t_days = list(training_data.keys())
         features = list(training_data[t_days[0]].keys())
+        if output:
+            hist_dict = {k:{f:{c:{} for c in self.training_bands} for f in self.classes} for k in t_days}
+            
         alpha_value = 0.4
         #center_color = (0.5, 0.5, 0.5)  # Adjust the center color as needed
         color_multi = generate_diverging_colors_hex(len(t_days))
@@ -302,6 +308,7 @@ class ClassifierSICE():
                     ax.plot(x,y, color ='black',linewidth=7,\
                             zorder=0)
                         
+                        
                     for date_id in np.unique(df_data['date']):
                       
                         mask = df_data['date']==date_id
@@ -311,10 +318,15 @@ class ClassifierSICE():
                         
                         date_name = t_days[int(date_id)]
                         
+
                         #print(f'{no_points} of {f} on {date_name}')
                         
                         #print(f'Band {col} sigma of {f} at {date_name}: {date_data_std}')
                         bins = freedman_bins(date_df)
+                        
+                        date_np = np.array(date_df)
+                        date_np = date_np[~np.isnan(date_np)]
+                        n, bins_out = np.histogram(date_np, bins=bins)
                         ax.hist(date_df, bins=bins, alpha=1, density=True,zorder=-1,\
                                           edgecolor='black', linewidth=1.2,histtype='step')
                         ax.hist(date_df, bins=bins, alpha=alpha_value, density=True,\
@@ -333,7 +345,9 @@ class ClassifierSICE():
                             ax_out.legend()
                             plt.savefig(self.base_folder + os.sep + 'figs' + os.sep + f'histogram_{col}_{date_name}.png',bbox='tight')
                             plt.close()
-                            
+                          
+                            hist_dict[date_name][f][col] = {'bins' : bins_out, 'count' : n}
+                                                        
                             
                         
                     ax.set_title(f'Band: {col}',fontsize=20)
@@ -420,8 +434,15 @@ class ClassifierSICE():
         plt.suptitle('Gaussian PDF of all classes - No ML Estimation', fontsize=30)  # Add a single title
         #plt.tight_layout()  # Adjust layout to make space for the title
         plt.show()
-                    
-        return
+        
+        
+        if output: 
+            dicts = [hist_dict[d] for d in hist_dict]
+            dfs = [pd.DataFrame.from_dict(d) for d in dicts]
+            out = [df.to_csv(self.base_folder + os.sep + 'figs' + os.sep + f'hist_bins_{d}.csv') for df,d in zip(dfs,t_days)]        
+            
+            
+        return 
                 
     def train_svm(self,training_data=None,c=1,weights=True,kernel='rbf',prob=False,test=None,export=None):
         
