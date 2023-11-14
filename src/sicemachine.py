@@ -116,8 +116,10 @@ class ClassifierSICE():
                 self.training_bands = bands
                 
             if not classes:
-                self.classes = ['dark_ice','bright_ice','red_snow','lakes','flooded_snow','melted_snow','dry_snow']
-                self.colours  = ['#005AFF', '#5974AF', '#02D26E74', '#800080', '#03EDFE', '#04A0E4F5', '#05E9FEFF']
+                # self.classes = ['dark_ice','bright_ice','red_snow','lakes','flooded_snow','melted_snow','dry_snow']
+                # self.colours  = ['#005AFF', '#5974AF', '#02D26E74', '#800080', '#03EDFE', '#04A0E4F5', '#05E9FEFF']
+                self.classes = ['dark_ice','bright_ice','purple_ice','red_snow','lakes','flooded_snow','melted_snow','dry_snow']
+                self.colours  = ['#005AFF', '#5974AF', '8b05f2','#02D26E74', '#800080', '#03EDFE', '#04A0E4F5', '#05E9FEFF']
                 
             else:
                 self.classes
@@ -185,7 +187,7 @@ class ClassifierSICE():
         for d,ref,re in zip(training_dates,dataset_ids,regions):     
             print(f"Getting Training Data for {d}")
             training_data[d] = {}
-            ds = xr.open_dataset(f'https://thredds.geus.dk/thredds/dodsC/SICE_500m/{re}/{ref}')
+            ds = xr.open_dataset(f'https://thredds.geus.dk/thredds/dodsC/SICE_500m/Greenland/{ref}')
             shp_files_date = [s for s in shp_files if d in s.replace('-','_')]
             
             for f in self.classes:

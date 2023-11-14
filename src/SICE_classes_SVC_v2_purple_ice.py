@@ -282,7 +282,7 @@ dates=['2017-07-12','2022-07-31']
 dates=['2017-07-12']
 
 
-dates=["2022-07-31"]
+# dates=["2022-07-31"]
 
 for datex in dates:
     
@@ -305,26 +305,26 @@ for datex in dates:
     
     # for datex in dates:
     
-    do_generate_rasters=0
+    do_generate_rasters=1
     
     if do_generate_rasters:
         # for red snow
-        normalised=normalisedx(1,f"{path_raw}{region_name}/{year}/{datex}_r_TOA_06.tif",
-              f"{path_raw}{region_name}/{year}/{datex}_r_TOA_08.tif",
-              f"{path_raw}{region_name}/{year}/{datex}_r_TOA_NDXI_0608.tif")
+        # normalised=normalisedx(1,f"{path_raw}{region_name}/{year}/{datex}_r_TOA_06.tif",
+        #       f"{path_raw}{region_name}/{year}/{datex}_r_TOA_08.tif",
+        #       f"{path_raw}{region_name}/{year}/{datex}_r_TOA_NDXI_0608.tif")
     
         # normalised=normalisedx(1,f"{path_raw}{region_name}/{year}/{datex}_r_TOA_08.tif",
         #       f"{path_raw}{region_name}/{year}/{datex}_r_TOA_02.tif",
         #       f"{path_raw}{region_name}/{year}/{datex}_r_TOA_NDXI_0802.tif")
     
         # for flooded areas
-        ratio_BRx=ratio_image(1,f"{path_raw}{region_name}/{year}/{datex}_r_TOA_02.tif",
-              f"{path_raw}{region_name}/{year}/{datex}_r_TOA_08.tif",
-              f"{path_raw}{region_name}/{year}/{datex}_r_TOA_0802.tif")
+        # ratio_BRx=ratio_image(1,f"{path_raw}{region_name}/{year}/{datex}_r_TOA_02.tif",
+        #       f"{path_raw}{region_name}/{year}/{datex}_r_TOA_08.tif",
+        #       f"{path_raw}{region_name}/{year}/{datex}_r_TOA_0802.tif")
     
-        ratio_BRx=ratio_image(1,f"{path_raw}{region_name}/{year}/{datex}_r_TOA_06.tif",
-              f"{path_raw}{region_name}/{year}/{datex}_r_TOA_08.tif",
-              f"{path_raw}{region_name}/{year}/{datex}_r_TOA_0806.tif")
+        # ratio_BRx=ratio_image(1,f"{path_raw}{region_name}/{year}/{datex}_r_TOA_06.tif",
+        #       f"{path_raw}{region_name}/{year}/{datex}_r_TOA_08.tif",
+        #       f"{path_raw}{region_name}/{year}/{datex}_r_TOA_0806.tif")
     
         temp=RGBx(f"{path_raw}{region_name}/{year}/{datex}_r_TOA_08.tif",
           f"{path_raw}{region_name}/{year}/{datex}_r_TOA_06.tif",
