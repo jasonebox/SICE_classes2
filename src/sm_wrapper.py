@@ -12,9 +12,16 @@ from multiprocessing import set_start_method, get_context
 import pickle
 import os
 
+
+
+bands = ["r_TOA_01" ,"r_TOA_02" ,"r_TOA_03", "r_TOA_04", "r_TOA_05","r_TOA_06" ,"r_TOA_07" ,"r_TOA_08", "r_TOA_09",\
+         "r_TOA_10" ,"r_TOA_11" ,"r_TOA_12", "r_TOA_13", "r_TOA_14","r_TOA_15" ,"r_TOA_16" ,"r_TOA_17", "r_TOA_18", "r_TOA_19",\
+         "r_TOA_20","r_TOA_21" ]
+    
+    
 bands = ["r_TOA_02" ,"r_TOA_04" ,"r_TOA_06", "r_TOA_08", "r_TOA_21"]
 
-classify = sm.ClassifierSICE()
+classify = sm.ClassifierSICE(bands=bands)
 
 
 # %%

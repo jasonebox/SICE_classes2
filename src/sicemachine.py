@@ -253,7 +253,7 @@ class ClassifierSICE():
             
             column_names = [d[0] for d in df_data.columns]
             num_rows = -(-len(column_names) // 2)
-            fig, axes = plt.subplots(nrows=num_rows, ncols=2, figsize=(22, 12), gridspec_kw={'hspace': 0.5})
+            fig, axes = plt.subplots(nrows=num_rows, ncols=2, figsize=(40, 40), gridspec_kw={'hspace': 0.5})
             axes = axes.flatten()
                 
                 
@@ -322,6 +322,7 @@ class ClassifierSICE():
                         #print(f'{no_points} of {f} on {date_name}')
                         
                         #print(f'Band {col} sigma of {f} at {date_name}: {date_data_std}')
+                        
                         bins = freedman_bins(date_df)
                         
                         date_np = np.array(date_df)
@@ -331,8 +332,9 @@ class ClassifierSICE():
                                           edgecolor='black', linewidth=1.2,histtype='step')
                         ax.hist(date_df, bins=bins, alpha=alpha_value, density=True,\
                                 label=f'{date_name}', color=color_multi[int(date_id)],zorder=-2)
-                        
-                        hist_dict[date_name][f][col] = {'bins' : bins_out, 'count' : n}
+                        if output:
+                            
+                            hist_dict[date_name][f][col] = {'bins' : bins_out, 'count' : n}
                             
                     ax.set_title(f'Band: {col}',fontsize=20)
                     ax.set_ylabel('Density Count',fontsize=20)
@@ -372,13 +374,18 @@ class ClassifierSICE():
             
                 
             
-            
+        spectrum = pd.read_csv('S3_spectrum.csv')
+        mean_spectrum = {f:{'mean':[],'std':[],'wl':[]} for f in self.classes}
+    
+       
         num_rows = -(-len(self.training_bands) // 2)
         fig, axes = plt.subplots(nrows=num_rows, ncols=2, figsize=(22, 12), gridspec_kw={'hspace': 0.5})
         axes = axes.flatten()
         color_multi = generate_diverging_colors_hex(len(features))
+        
         for i,toa in enumerate(self.training_bands):
             data = pdf_all_t_w[toa]
+            
             ax = axes[i]
             for j,cl in enumerate(data):
                 
@@ -386,6 +393,10 @@ class ClassifierSICE():
                 y = cl[:,1]
                 class_int = int(np.unique(cl[:,2]))
                 class_name = features[class_int]
+                
+                mean_spectrum[class_name]['mean'].append(np.nanmean(x))
+                mean_spectrum[class_name]['std'].append(np.nanstd(x))
+                mean_spectrum[class_name]['wl'].append(spectrum[toa])
                 
                 ax.plot(x,y, color = color_multi[class_int],linewidth=6,\
                         label=f'{class_name}',zorder=1)
@@ -403,6 +414,34 @@ class ClassifierSICE():
         fig.delaxes(axes[-1])      
         plt.suptitle('Gaussian PDF of all classes - With Tukey BiWeights', fontsize=30)  # Add a single title
         #plt.tight_layout()  # Adjust layout to make space for the title
+        plt.show()
+        
+                
+        
+        # Initialize a figure
+        fig, ax = plt.subplots()
+        
+        # Plot the line
+        
+        for i,c in enumerate(list(mean_spectrum.keys())):
+                
+           
+            x = np.array(mean_spectrum[c]['wl']).ravel()
+            y = np.array(mean_spectrum[c]['mean'])
+            z = np.array(mean_spectrum[c]['std'])
+            
+            ax.plot(x, y, label=f'{c}',color = color_multi[i])
+            
+            # Create shaded area around the line
+            ax.fill_between(x, y - z, y + z, alpha=0.3, color=color_multi[i])
+                
+          
+        # Customize the plot
+        ax.set_xlabel('Wavelength (nm)')
+        ax.set_ylabel('Reflectance (-)')
+        ax.set_title('Mean Reflactance on Training Data')
+        ax.legend()    
+        # Show the plot
         plt.show()
         
         fig, axes = plt.subplots(nrows=num_rows, ncols=2, figsize=(22, 12), gridspec_kw={'hspace': 0.5})
@@ -437,12 +476,17 @@ class ClassifierSICE():
         plt.show()
         
         
+        
+        
+        
+        
         if output: 
             dicts = [hist_dict[d] for d in hist_dict]
             dfs = [pd.DataFrame.from_dict(d) for d in dicts]
             out = [df.to_csv(self.base_folder + os.sep + 'figs' + os.sep + f'hist_bins_{d}.csv') for df,d in zip(dfs,t_days)]        
-            
-            
+        
+        
+        
         return 
     
     def _train_test_format(self,training_data,test_type,test_date,fold):
