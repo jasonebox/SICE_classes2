@@ -40,8 +40,6 @@ def compute_weighted_mean(w,d):
 
 def tukey_w(w,d,sigma):
     # Tukey biweights, by variance for each band to allow higher prediction skill
-    
-
     break_p = 4.685
     ml_est = sum(w * d) / sum(w)
     eps = (d - ml_est) / sigma 
@@ -88,9 +86,7 @@ def date_format(date_string):
    
 def open_shp(shp_f):
     label_gdf = gpd.read_file(shp_f).to_crs("epsg:3413")
-    shps = json.loads(label_gdf.exterior.to_json())['features']
-    
-    return shps
+    return json.loads(label_gdf.exterior.to_json())['features']
     
 def freedman_bins(df): 
     quartiles = df.quantile([0.25, 0.75])
@@ -101,6 +97,8 @@ def freedman_bins(df):
     if np.isnan(np.array(bins)):
         bins = 2 
     return int(np.ceil(bins))
+
+
     
 class ClassifierSICE():
     
@@ -309,6 +307,8 @@ class ClassifierSICE():
                             zorder=0)
                         
                         
+                    no = 0
+                    bins_no = 0
                     for date_id in np.unique(df_data['date']):
                       
                         mask = df_data['date']==date_id
@@ -331,25 +331,9 @@ class ClassifierSICE():
                                           edgecolor='black', linewidth=1.2,histtype='step')
                         ax.hist(date_df, bins=bins, alpha=alpha_value, density=True,\
                                 label=f'{date_name}', color=color_multi[int(date_id)],zorder=-2)
-                            
-                        if output:
-                            fig_out,ax_out = plt.subplots(figsize=(10,7))
-                            ax_out.hist(date_df, bins=bins, alpha=1, density=True,zorder=-1,\
-                                              edgecolor='black', linewidth=1.2,histtype='step')
-                            ax_out.hist(date_df, bins=bins, alpha=alpha_value, density=True,\
-                                    label=f'{date_name}', color=color_multi[int(date_id)],zorder=-2)
-                            ax_out.set_title(f'Class: {f} Band: {col}',fontsize=20)
-                            ax_out.set_ylabel('Density Count',fontsize=20)
-                            ax_out.set_xlabel('Reflectance',fontsize=20)
-                            ax_out.tick_params(labelsize=16)
-                            ax_out.legend()
-                            plt.savefig(self.base_folder + os.sep + 'figs' + os.sep + f'histogram_{col}_{date_name}.png',bbox='tight')
-                            plt.close()
-                          
-                            hist_dict[date_name][f][col] = {'bins' : bins_out, 'count' : n}
-                                                        
-                            
                         
+                        hist_dict[date_name][f][col] = {'bins' : bins_out, 'count' : n}
+                            
                     ax.set_title(f'Band: {col}',fontsize=20)
                     ax.set_ylabel('Density Count',fontsize=20)
                     ax.set_xlabel('Reflectance',fontsize=20)
@@ -357,6 +341,7 @@ class ClassifierSICE():
                     ax.legend()
                     
                     
+                            
                     
                     #### Add Combined Dist. ####
                     
@@ -366,6 +351,22 @@ class ClassifierSICE():
             fig.delaxes(axes[-1])
             plt.suptitle(f'Training Data Band Distributions of Class {f}', fontsize=30)  # Add a single title
             #plt.tight_layout()  # Adjust layout to make space for the title
+            if output:
+                
+                plt.savefig(self.base_folder + os.sep + 'figs' + os.sep + f'histogram_{f}.png',bbox='tight')
+                #plt.close()
+               
+                
+                # fig_out,ax_out = plt.subplots(figsize=(10,7))
+                # ax_out.hist(date_df, bins=bins, alpha=1, density=True,zorder=-1,\
+                #                   edgecolor='black', linewidth=1.2,histtype='step')
+                # ax_out.hist(date_df, bins=bins, alpha=alpha_value, density=True,\
+                #         label=f'{date_name}', color=color_multi[int(date_id)],zorder=-2)
+                # ax_out.set_title(f'Class: {f} Band: {col}',fontsize=20)
+                # ax_out.set_ylabel('Density Count',fontsize=20)
+                # ax_out.set_xlabel('Reflectance',fontsize=20)
+                # ax_out.tick_params(labelsize=16)
+                # ax_out.legend()
             plt.show()
             
             
@@ -443,8 +444,71 @@ class ClassifierSICE():
             
             
         return 
+    
+    def _train_test_format(self,training_data,test_type,test_date,fold):
+        
+        train_data = []
+        train_label = []
+        test_data = []
+        test_label = []
+        
+        t_days = list(training_data.keys())
+        features = list(training_data[t_days[0]].keys())
+        
+        for f_int,f in enumerate(features):
+            data = [np.array([training_data[d][f][b] for b in self.training_bands]).T for d in t_days if d != test_date]
+            
+            data_stack = np.vstack([arr for arr in data])
+            data_stack = np.array([dd for dd in data_stack[:] if not np.isnan(dd).any()])
+            data_stack = np.array([dd for dd in data_stack[:] if len(dd[dd==0])==0])
+            
+            if test_type:
+                if test_type == 'date':
+                    data_test_stack = [np.array([training_data[test_date][f][b] for b in self.training_bands]).T]
+                   
+                    data_test_stack = np.vstack([arr for arr in data_test_stack])
+                    data_test_stack = np.array([dd for dd in data_test_stack[:] if not np.isnan(dd).any()])
+                    data_test_stack = np.array([dd for dd in data_test_stack[:] if len(dd[dd==0])==0])
+                    
+                elif test_type == 'ratio':
+                    
+                    no_pixels = len(data_stack[:,0])
+                    no_bands = len(self.training_bands)
+                    fold_r_min = int(no_pixels/5) * (fold - 1)
+                    fold_r_max = int(no_pixels/5) * (fold)
+                    
+                    
+                    mask = np.zeros_like(data_stack, dtype=bool)
+                    mask[fold_r_min:fold_r_max,:] = True
+                    
+                    
+                    data_test_stack = np.ones_like(data_stack) * np.nan
+                    
+                    data_test_stack = data_stack[mask].reshape((fold_r_max-fold_r_min),no_bands)
+                    data_stack = data_stack[~mask].reshape((no_pixels-(fold_r_max-fold_r_min)),no_bands)
+                  
+                test_data.append(data_test_stack)
                 
-    def train_svm(self,training_data=None,c=1,weights=True,kernel='rbf',prob=False,test=None,export=None):
+                label = (np.ones_like(data_test_stack[:,0]) * f_int).reshape(-1,1)
+                test_label.append(label)
+            else:
+                test_data.append(None)
+                test_label.append(None)
+                
+                
+            train_data.append(data_stack)
+            label = (np.ones_like(data_stack[:,0]) * f_int).reshape(-1,1)
+            train_label.append(label)
+                    
+        train_data = np.vstack([arr for arr in train_data])
+        train_label = np.vstack([arr for arr in train_label]).ravel()
+        
+        test_data = np.vstack([arr for arr in test_data])
+        test_label = np.vstack([arr for arr in test_label]).ravel()
+        
+        return train_data,train_label,test_data,test_label
+                
+    def train_svm(self,training_data=None,c=1,weights=True,kernel='rbf',prob=False,test_type=None,fold=None,test_date=None,export=None):
         
         #enablePrint()
         
@@ -453,9 +517,16 @@ class ClassifierSICE():
             
         t_days = list(training_data.keys())
         
-        if test:
-                testing_date = test
-                print(f'Testing Date {test}')
+        if test_type:
+            if test_type == 'date':
+                testing_date = test_date
+                print(f'Test is Set to Date, Using {test_date} as Testing Date ')
+            elif fold>5:
+                print(f'Train/Test ratio is 80/20, you cannot use more than 5 folds since 5*20 = 100,,,, Test is set to None')
+                test_type = None
+            else:
+                print(f'Test is Set to Ratio, Using 80/20 as Train/Test Ratio on Whole Dataset, Fold no {fold}')
+                testing_date = None
         else:
             testing_date = None
         
@@ -467,53 +538,8 @@ class ClassifierSICE():
         train_label = []
         
         print('Formatting Training Data')
-        
-        for f_int,f in enumerate(features):
-            data = [np.array([training_data[d][f][b] for b in self.training_bands]).T for d in t_days if d != testing_date]
-            data_stack = np.vstack([arr for arr in data])
-            
-            data_stack = np.array([dd for dd in data_stack[:] if not np.isnan(dd).any()])
-            data_stack = np.array([dd for dd in data_stack[:] if len(dd[dd==0])==0])
-              
-            train_data.append(data_stack)
-            
-            label = (np.ones_like(data_stack[:,0]) * f_int).reshape(-1,1)            
-            train_label.append(label)
-        
-        train_data = np.vstack([arr for arr in train_data])
-        train_label = np.vstack([arr for arr in train_label]).ravel() 
-        
-        if testing_date is not None: 
-            
-            print(f'Splitting Training Dates, Removing Date: {testing_date} for Testing')  
-            test_data = []
-            test_label = []
-            
-            for f_int,f in enumerate(features):
-                data = [np.array([training_data[testing_date][f][b] for b in self.training_bands]).T]
-                data_stack = np.vstack([arr for arr in data])
-                #print(np.shape(data_stack))
-                data_stack = np.array([dd for dd in data_stack[:] if not np.isnan(dd).any()])
-                
-                data_stack = np.array([dd for dd in data_stack[:] if len(dd[dd==0])==0])
-                
-                #print(np.shape(data_stack))
-                test_data.append(data_stack)
-                
-                label = (np.ones_like(data_stack[:,0]) * f_int).reshape(-1,1)
-                test_label.append(label)
-                
-            test_data = np.vstack([arr for arr in test_data])
-            test_label = np.vstack([arr for arr in test_label]).ravel() 
-            
-            
-           # if testing_date is None:
-           #     train_data, test_data, train_label, test_label \
-           #          = train_test_split(train_data, train_label, test_size=0.1, random_state=42) 
-            
-            
-        
-        
+        train_data,train_label,test_data,test_label = self._train_test_format(training_data,test_type,test_date,fold)
+
         if weights:
             print('Computing Weights')
             no_i = np.arange(50) #Number of iterations
@@ -537,7 +563,7 @@ class ClassifierSICE():
         model.fit(train_data, train_label,sample_weight=w_samples)
         print('Done')
         
-        if testing_date is None:
+        if test_type is None:
             data_split_svm = None
         else:
             data_split_svm = {}
@@ -670,11 +696,9 @@ class ClassifierSICE():
             plt.suptitle(f'Band Distributions of Predicted Class {cl}', fontsize=20)  # Add a single title
             plt.tight_layout()  # Adjust layout to make space for the title
             plt.show()
-                                    
-                    
+            
             print(f"Accuracy of Predicting {cl}: {ac}")
             #print(f"Confusion Matrix of {cl}: \n {cm} \n")
-            
             
             for l in list(np.unique(labels_pred)):
                 
@@ -693,16 +717,14 @@ class ClassifierSICE():
         
         labels_pred = model.predict(test_data_all)
         cm = confusion_matrix(labels_pred, test_label_all)
-        
-        
-         
+        con_dict = {}
         for i,cl in enumerate(self.classes):
-    
-            acc_dict[cl] = {'omm' : ((sum(cm[:,i])-cm[i,i])/(cm[i,i]))}
-            acc_dict[cl] = {'com' : ((sum(cm[i,:])-cm[i,i])/(cm[i,i]))}
-            acc_dict[cl] = {'ratio' : (len(data_split[cl]['train_data'])/len(data_split[cl]['test_data']))}
+            con_dict[cl] = {'ratio' : (len(data_split[cl]['test_data'])/(len(data_split[cl]['train_data'])\
+                                     + len(data_split[cl]['test_data']))),\
+                            'com' : ((sum(cm[i,:])-cm[i,i])/(cm[i,i])),\
+                            'omm' : ((sum(cm[:,i])-cm[i,i])/(cm[i,i]))}
         
-        return acc_dict,cm
+        return acc_dict,con_dict,cm
     
     def get_prediction_data(self,dates_to_predict):
         

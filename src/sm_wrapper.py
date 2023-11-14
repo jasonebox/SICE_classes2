@@ -12,6 +12,8 @@ from multiprocessing import set_start_method, get_context
 import pickle
 import os
 
+bands = ["r_TOA_02" ,"r_TOA_04" ,"r_TOA_06", "r_TOA_08", "r_TOA_21"]
+
 classify = sm.ClassifierSICE()
 
 
@@ -53,17 +55,34 @@ model, data_split = classify.train_svm(
 
 #for c in C_range:
     
+
+# for i in list(training_data.keys()):
+
+#     model_rbf, data_split_rbf = classify.train_svm(
+#         training_data=training_data, c=1, kernel='rbf', test=i,weights=False)
+#     acc_dict,con_dict, cm = classify.test_svm(
+#         model=model_rbf, data_split=data_split_rbf, mute=True)
+
+#     test_dict[i] = {'acc_dict': acc_dict,'con_dict': con_dict}
+   
+    
+    
 test_dict = {}
 
-for i in list(training_data.keys()):
+test_type = 'date'
+test_type = 'ratio'
+folds = np.arange(1,6)
+
+for i in list(folds):
 
     model_rbf, data_split_rbf = classify.train_svm(
-        training_data=training_data, c=1, kernel='rbf', test=i)
-    acc_dict, cm = classify.test_svm(
+        training_data=training_data, c=1, kernel='rbf',test_type=test_type,fold=i,weights=True)
+    acc_dict,con_dict, cm = classify.test_svm(
         model=model_rbf, data_split=data_split_rbf, mute=True)
 
-    test_dict[i] = {'acc_dict': acc_dict}
-
+    test_dict[i] = {'acc_dict': acc_dict,'con_dict': con_dict}
+   
+    
 t_dates = list(test_dict.keys())
 classes = ['dark_ice', 'bright_ice', 'red_snow',
            'lakes', 'flooded_snow', 'melted_snow', 'dry_snow']
@@ -71,15 +90,25 @@ classes = ['dark_ice', 'bright_ice', 'red_snow',
 for cl in classes:
 
     acc_val = 0
-
+    omi_val = 0
+    com_val = 0
+    print(f'ratio for {cl} on test_date')
+          
     for no, td in enumerate(t_dates):
         acc_val += test_dict[td]['acc_dict'][cl]['acc']
-
+        omi_val += test_dict[td]['con_dict'][cl]['omm']
+        com_val += test_dict[td]['con_dict'][cl]['com']
+        ratio = test_dict[td]['con_dict'][cl]['ratio']
+        print(f'{td}: {ratio}')
+        
     acc_m = acc_val/len(t_dates)
+    omi_m = omi_val/len(t_dates)
+    com_m = com_val/len(t_dates)
 
     #print(f'Regularization paramter C is {c}')
     print(f'Accuracy for {cl} : {acc_m}')
-
+    print(f'Omission for {cl} : {omi_m}')
+    print(f'Comission for {cl} : {com_m}')
 
 # %%
 
