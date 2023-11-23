@@ -14,9 +14,9 @@ import os
 
 
 
-bands = ["r_TOA_01" ,"r_TOA_02" ,"r_TOA_03", "r_TOA_04", "r_TOA_05","r_TOA_06" ,"r_TOA_07" ,"r_TOA_08", "r_TOA_09",\
-         "r_TOA_10" ,"r_TOA_11" ,"r_TOA_12", "r_TOA_13", "r_TOA_14","r_TOA_15" ,"r_TOA_16" ,"r_TOA_17", "r_TOA_18", "r_TOA_19",\
-         "r_TOA_20","r_TOA_21" ]
+# bands = ["r_TOA_01" ,"r_TOA_02" ,"r_TOA_03", "r_TOA_04", "r_TOA_05","r_TOA_06" ,"r_TOA_07" ,"r_TOA_08", "r_TOA_09",\
+#          "r_TOA_10" ,"r_TOA_11" , "r_TOA_14","r_TOA_15" ,"r_TOA_16" ,"r_TOA_17", "r_TOA_18", "r_TOA_19",\
+#          "r_TOA_20","r_TOA_21" ]
     
     
 bands = ["r_TOA_02" ,"r_TOA_04" ,"r_TOA_06", "r_TOA_08", "r_TOA_21"]
@@ -28,11 +28,11 @@ classify = sm.ClassifierSICE(bands=bands)
 
 ###### Import Training Data ######
 
-date = None
+dates = None
 
-#date = ['2021-07-30']
-
-training_data = classify.get_training_data()
+#dates=[ '2017_07_28','2019_08_02','2020_07_22','2021_07_30']
+ 
+training_data = classify.get_training_data(d_t=dates)
 
 # %%
 
@@ -91,7 +91,7 @@ for i in list(folds):
    
     
 t_dates = list(test_dict.keys())
-classes = ['dark_ice', 'bright_ice', 'red_snow',
+classes = ['dark_ice', 'bright_ice','purple_ice' ,'red_snow',
            'lakes', 'flooded_snow', 'melted_snow', 'dry_snow']
 
 for cl in classes:
@@ -99,21 +99,25 @@ for cl in classes:
     acc_val = 0
     omi_val = 0
     com_val = 0
-    print(f'ratio for {cl} on test_date')
-          
-    for no, td in enumerate(t_dates):
-        acc_val += test_dict[td]['acc_dict'][cl]['acc']
-        omi_val += test_dict[td]['con_dict'][cl]['omm']
-        com_val += test_dict[td]['con_dict'][cl]['com']
-        ratio = test_dict[td]['con_dict'][cl]['ratio']
-        print(f'{td}: {ratio}')
-        
-    acc_m = acc_val/len(t_dates)
-    omi_m = omi_val/len(t_dates)
-    com_m = com_val/len(t_dates)
-
+    print(f'ratio for {cl} fold nr: ')
+    
+    acc_list = [test_dict[td]['acc_dict'][cl]['acc'] for td in test_dict]
+    omi_list = [test_dict[td]['con_dict'][cl]['omm'] for td in test_dict]
+    com_list = [test_dict[td]['con_dict'][cl]['com'] for td in test_dict]
+    ratio = [test_dict[td]['con_dict'][cl]['ratio'] for td in test_dict]
+    cm_list = [test_dict[td]['con_dict'][cl]['confusion'] for td in test_dict]
+    [print(f'{td}: {r}') for r,td in zip(ratio,list(test_dict.keys()))]
+    
+    acc_m = np.nanmean(np.array(acc_list))
+    acc_std = np.nanstd(np.array(acc_list))
+    omi_m = np.nanmean(np.array(omi_list))
+    com_m = np.nanmean(np.array(com_list))
+    cm_m = sum(cm_list)/5
+    
+    
     #print(f'Regularization paramter C is {c}')
-    print(f'Accuracy for {cl} : {acc_m}')
+    print(f'Mean Accuracy for {cl} : {acc_m}')
+    print(f'Accuracy Standard Deviation for {cl} : {acc_std}')
     print(f'Omission for {cl} : {omi_m}')
     print(f'Comission for {cl} : {com_m}')
 
@@ -121,11 +125,11 @@ for cl in classes:
 
 #####
 
-year = 2021
+year = 2019
 year_range = np.arange(year, year+1)
 
-start_season = '08-23'
-end_season = '08-23'
+start_season = '07-28'
+end_season = '07-30'
 
 start_dates = [datetime.strptime(
     str(y) + '-' + start_season, '%Y-%m-%d').date() for y in year_range]
@@ -140,6 +144,7 @@ days = sorted(list(map(lambda n: n.strftime("%Y-%m-%d"), days)))
 predict_training_dates = False
 
 ###### Predict Dates ######
-
-classify.predict_svm(dates_to_predict=days, model='import',
-                     training_predict=predict_training_dates, prob=True)
+for d in days:
+        
+    classify.predict_svm(dates_to_predict=d, model='import',
+                         training_predict=predict_training_dates, prob=True)
