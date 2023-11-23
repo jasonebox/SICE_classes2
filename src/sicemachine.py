@@ -5,6 +5,10 @@ Created on Tue Aug 22 12:47:18 2023
 @author: rabni
 """
 
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", category=RuntimeWarning)
+warnings.filterwarnings("ignore", category=FutureWarning)
 import pandas as pd
 import os
 import numpy as np
@@ -14,6 +18,7 @@ import xarray as xr
 import rasterio as rio
 from rasterio.transform import Affine
 from pyproj import CRS as CRSproj
+from pyproj import Transformer
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import confusion_matrix,accuracy_score
 import glob
@@ -23,17 +28,13 @@ import datetime
 import geopandas
 from matplotlib import path
 import matplotlib.pyplot as plt
-import warnings
 import logging
 import colorsys
 import traceback
-import matplotlib.pyplot as plt 
 from matplotlib.colors import ListedColormap
 import random
 import pickle
 import sys
-warnings.filterwarnings("ignore", category=RuntimeWarning)
-warnings.filterwarnings("ignore", category=FutureWarning)
     
 def compute_weighted_mean(w,d):
     return sum(w * d) / sum(w)
@@ -63,6 +64,20 @@ def huber_w(w,d,sigma):
     
     return w 
 
+def predefined_colors(class_names):
+    N_classes=len(class_names)
+    color_list=np.zeros((N_classes,4))
+    color_list[0] = (100/255,100/255,100/255, 1.0)  # dark bare ice
+    co=150
+    color_list[1] = (co/255,co/255,co/255, 1.0)  # bright bare ice
+    color_list[2] = (130/255,70/255,179/255, 1.0)  # purple ice
+    color_list[3] = (1,0,0, 1)  # red snow
+    color_list[4] = (0.8,0.8,0.3, 1.0)  # lakes
+    color_list[5] = (.5,.5,1, 1.0)  # flooded_snow
+    color_list[6] = (239/255,188/255,255/255, 1)  # melted_snow
+    color_list[7] = (0,0,0, 1.0)  # dry_snow'
+    return color_list
+
 def generate_diverging_colors_hex(num_colors, center_color='#808080'):
     colors = []
     for i in range(num_colors):
@@ -84,9 +99,14 @@ def date_format(date_string):
            return 'err'
        return "OK"
    
-def open_shp(shp_f):
-    label_gdf = gpd.read_file(shp_f).to_crs("epsg:3413")
+def shp_features(shp_f):
+    print(shp_f)
+    label_gdf = gpd.read_file(shp_f)
+    
     return json.loads(label_gdf.exterior.to_json())['features']
+
+def shp_epsg(shp_f):
+    return int(gpd.read_file(shp_f).crs.to_epsg())
     
 def freedman_bins(df): 
     quartiles = df.quantile([0.25, 0.75])
@@ -109,7 +129,9 @@ class ClassifierSICE():
         
             self.src_folder = os.getcwd()
             self.base_folder = os.path.abspath('..')
-            
+            WGSProj = CRSproj.from_string("+init=EPSG:4326")
+            PolarProj = CRSproj.from_string("+init=EPSG:3413")
+            self.transformer = Transformer.from_proj(WGSProj, PolarProj)
             if not bands:    
                 self.training_bands = ["r_TOA_02" ,"r_TOA_04" ,"r_TOA_06", "r_TOA_08", "r_TOA_21"]
             else:
@@ -193,7 +215,8 @@ class ClassifierSICE():
             for f in self.classes:
                 
                 shp = [s for s in shp_files_date if f.split('_')[0] in s]
-                label_shps = [open_shp(s) for s in shp]
+                label_shps = [shp_features(s) for s in shp]
+                crs_shps = [shp_epsg(s) for s in shp]
                 label_shps = [item for sublist in label_shps for item in sublist]    
                 
                 
@@ -202,9 +225,14 @@ class ClassifierSICE():
                 xgrid,ygrid = np.meshgrid(x,y)
                 mask = (np.ones_like(xgrid) * False).astype(bool)
                 
+                
                 for ls in label_shps:
                     if ls['geometry'] is not None:
                         x_poly, y_poly = map(list, zip(*ls['geometry']['coordinates']))
+                        
+                        if 4326 in crs_shps:
+                            x_poly,y_poly = self.transformer.transform(np.array(x_poly),np.array(y_poly))
+                                                                       
                         p = path.Path(np.column_stack((x_poly,y_poly)))
                         idx_poly = p.contains_points(np.column_stack((xgrid.ravel(),ygrid.ravel())))
                         mask.ravel()[idx_poly] = True
@@ -236,6 +264,7 @@ class ClassifierSICE():
         
         pdf_all_no_w = {k:[] for k in self.training_bands}
         pdf_all_t_w = {k:[] for k in self.training_bands}
+       
         for f_int,f in enumerate(features):
             data_all = []
             for i,d in enumerate(t_days):
@@ -254,10 +283,10 @@ class ClassifierSICE():
             df_data = pd.DataFrame(data_all,columns=[df_col])
             
             column_names = [d[0] for d in df_data.columns]
+            
             num_rows = -(-len(column_names) // 2)
             fig, axes = plt.subplots(nrows=num_rows, ncols=2, figsize=(40, 40), gridspec_kw={'hspace': 0.5})
             axes = axes.flatten()
-                
                 
             
             for i,col in enumerate(column_names):
@@ -356,8 +385,8 @@ class ClassifierSICE():
             plt.suptitle(f'Training Data Band Distributions of Class {f}', fontsize=30)  # Add a single title
             #plt.tight_layout()  # Adjust layout to make space for the title
             if output:
-                
-                plt.savefig(self.base_folder + os.sep + 'figs' + os.sep + f'histogram_{f}.png',bbox='tight')
+                plt.savefig(self.base_folder + os.sep + 'figs' + os.sep + f'histogram_{f}.png')
+                #plt.savefig(self.base_folder + os.sep + 'figs' + os.sep + f'histogram_{f}.png',bbox='tight')
                 #plt.close()
                
                 
@@ -373,17 +402,16 @@ class ClassifierSICE():
                 # ax_out.legend()
             plt.show()
             
-            
-                
-            
+        
         spectrum = pd.read_csv('S3_spectrum.csv')
         mean_spectrum = {f:{'mean':[],'std':[],'wl':[]} for f in self.classes}
     
-       
+        
         num_rows = -(-len(self.training_bands) // 2)
-        fig, axes = plt.subplots(nrows=num_rows, ncols=2, figsize=(22, 12), gridspec_kw={'hspace': 0.5})
+        fig, axes = plt.subplots(nrows=num_rows, ncols=2, figsize=(22, 12),dpi=600, gridspec_kw={'hspace': 0.5})
         axes = axes.flatten()
-        color_multi = generate_diverging_colors_hex(len(features))
+        color_multi = predefined_colors(self.classes)
+       
         
         for i,toa in enumerate(self.training_bands):
             data = pdf_all_t_w[toa]
@@ -411,6 +439,7 @@ class ClassifierSICE():
             ax.tick_params(labelsize=16)
             ax.legend()
             
+        
         if len(column_names) % 2 == 1:
             fig.delaxes(axes[-1])  
         fig.delaxes(axes[-1])      
@@ -418,34 +447,68 @@ class ClassifierSICE():
         #plt.tight_layout()  # Adjust layout to make space for the title
         plt.show()
         
-                
+             
         
         # Initialize a figure
-        fig, ax = plt.subplots()
-        
+        start = 1
+        # Initialize a figure
+        fig, ax = plt.subplots(figsize=(24, 12),dpi=600)
+ 
         # Plot the line
-        
+        # the text bounding box
+        bbox = {'fc': '0.8', 'pad': 0}
         for i,c in enumerate(list(mean_spectrum.keys())):
-                
-           
+ 
+ 
             x = np.array(mean_spectrum[c]['wl']).ravel()
             y = np.array(mean_spectrum[c]['mean'])
             z = np.array(mean_spectrum[c]['std'])
-            
-            ax.plot(x, y, label=f'{c}',color = color_multi[i])
-            
+ 
+ 
+ 
+           
+ 
+            ax.scatter(x, y,label=f'{c}',color = color_multi[i],s=29)
+            ax.scatter(x, y,color = 'black',s=45,zorder=0)
             # Create shaded area around the line
-            ax.fill_between(x, y - z, y + z, alpha=0.3, color=color_multi[i])
-                
-          
+            #ax.fill_between(x, y - z, y + z, alpha=0.3, color=color_multi[i])
+            ax.plot(x, y,color = color_multi[i],zorder=0,linewidth = 1)
+            ax.plot(x, y,color = 'black',zorder=-1,linewidth = 2)
+            if start == 1 and c == 'dry_snow':
+                for ii, txt in enumerate(self.training_bands):
+                    ax.annotate('B'+txt[-2:], (x[ii], -0.0),
+                     rotation=90,zorder=5,size = 15)
+                    ax.plot((x[ii],x[ii]), (0,1),color = 'black',alpha=0.2,
+                            zorder=-5)
+                start = 0
+ 
+ 
         # Customize the plot
-        ax.set_xlabel('Wavelength (nm)')
-        ax.set_ylabel('Reflectance (-)')
-        ax.set_title('Mean Reflactance on Training Data')
-        ax.legend()    
-        # Show the plot
-        plt.show()
+        # graphics definitions
         
+        th=2 # line thickness
+        formatx='{x:,.3f}' ; fs=18
+        plt.rcParams["font.size"] = fs
+        plt.rcParams['axes.facecolor'] = 'w'
+        plt.rcParams['axes.edgecolor'] = 'k'
+        plt.xticks(fontsize=20, rotation=90)
+        plt.yticks(fontsize=20)
+        plt.rcParams['axes.grid'] = False
+        plt.rcParams['axes.grid'] = True
+        plt.rcParams['grid.alpha'] = 0.5
+        plt.rcParams['grid.color'] = "#C6C6C6"
+        plt.rcParams["legend.facecolor"] ='w'
+        plt.rcParams["mathtext.default"]='regular'
+        plt.rcParams['grid.linewidth'] = th/2
+        plt.rcParams['axes.linewidth'] = 1
+        ax.set_xlabel('Wavelength (nm)',fontsize=35)
+        ax.set_ylabel('Reflectance (-)',fontsize=35)
+        ax.set_title('Mean Reflectance on Training Data',fontsize=35)
+        ax.legend(loc='center left',bbox_to_anchor=(1,0.5),fontsize=35,markerscale=4)
+        # Show the plot
+        plt.savefig(self.base_folder + os.sep + 'figs' + os.sep + f'Mean Reflectance on Training Data.png',dpi=400)
+        plt.show()
+           
         fig, axes = plt.subplots(nrows=num_rows, ncols=2, figsize=(22, 12), gridspec_kw={'hspace': 0.5})
         axes = axes.flatten()
         color_multi = generate_diverging_colors_hex(len(features))
@@ -486,7 +549,7 @@ class ClassifierSICE():
             dicts = [hist_dict[d] for d in hist_dict]
             dfs = [pd.DataFrame.from_dict(d) for d in dicts]
             out = [df.to_csv(self.base_folder + os.sep + 'figs' + os.sep + f'hist_bins_{d}.csv') for df,d in zip(dfs,t_days)]        
-        
+    
         
         
         return 
@@ -518,12 +581,15 @@ class ClassifierSICE():
                     
                 elif test_type == 'ratio':
                     
+                    seed_value = 42
+                    np.random.seed(seed_value)
+                    np.random.shuffle(data_stack)
+                    
                     no_pixels = len(data_stack[:,0])
                     no_bands = len(self.training_bands)
                     fold_r_min = int(no_pixels/5) * (fold - 1)
                     fold_r_max = int(no_pixels/5) * (fold)
-                    
-                    
+            
                     mask = np.zeros_like(data_stack, dtype=bool)
                     mask[fold_r_min:fold_r_max,:] = True
                     
@@ -660,6 +726,7 @@ class ClassifierSICE():
             ac = np.round(accuracy_score(labels_pred,label_test),3)
             
             acc_dict[cl] = {'acc' : ac}
+            
             #print(f"Plotting Band Distribution in class {cl}")
             alpha_value = 0.35
             num_bins = 10
@@ -688,9 +755,10 @@ class ClassifierSICE():
             # Creating overlapping histogram plots for all columns from both DataFrames
             fig, axes = plt.subplots(nrows=num_rows, ncols=2, figsize=(12, 12))
             axes = axes.flatten()
+            
             for i, col in enumerate(column_names):
-                ax = axes[i]
                 
+                ax = axes[i]
                 bins = freedman_bins(good_labels[col])
                 
                 good_labels[col].hist(ax=ax, bins=bins, alpha=alpha_value,\
@@ -767,8 +835,9 @@ class ClassifierSICE():
         for i,cl in enumerate(self.classes):
             con_dict[cl] = {'ratio' : (len(data_split[cl]['test_data'])/(len(data_split[cl]['train_data'])\
                                      + len(data_split[cl]['test_data']))),\
-                            'com' : ((sum(cm[i,:])-cm[i,i])/(cm[i,i])),\
-                            'omm' : ((sum(cm[:,i])-cm[i,i])/(cm[i,i]))}
+                            'com' : ((sum(cm[i,:])-cm[i,i])/sum(cm[i,:])),\
+                            'omm' : ((sum(cm[:,i])-cm[i,i])/sum(cm[:,i])),\
+                            'confusion' : cm}
         
         return acc_dict,con_dict,cm
     
