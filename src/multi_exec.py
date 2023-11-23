@@ -17,9 +17,11 @@ import logging
 import glob
 import os
 import time
+import warnings
 from multiprocessing import set_start_method,get_context
 import traceback
-
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", category=FutureWarning)
 base_f  = os.path.abspath('..')
 
 if not os.path.exists(base_f + os.sep + "logs"):
@@ -44,10 +46,11 @@ def parse_arguments():
         return args
 
 
-def multiproc(day,model):
+def multiproc(day):
     logging.info(f'Processing {day}')
     classify = sm.ClassifierSICE()
-    classify.predict_svm(day, model=model)
+    classify.predict_svm(dates_to_predict=day, model='import',
+                         training_predict=False, prob=True)
     return
 
 if __name__ == "__main__":
@@ -64,7 +67,7 @@ if __name__ == "__main__":
     logging.info('Parallelization Spawned')
     
     with get_context("spawn").Pool(args.cores) as p:     
-            p.starmap(multiproc,zip(dates,model))
+            p.starmap(multiproc,zip(dates))
             p.close()
             p.join()
             logging.info("Done with multiprocessing")
