@@ -21,6 +21,7 @@ from pyproj import CRS as CRSproj
 from pyproj import Transformer
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import confusion_matrix,accuracy_score
+from sklearn.decomposition import TruncatedSVD
 import glob
 import json
 import time
@@ -35,7 +36,7 @@ from matplotlib.colors import ListedColormap
 import random
 import pickle
 import sys
-    
+
 def compute_weighted_mean(w,d):
     return sum(w * d) / sum(w)
 
@@ -100,7 +101,7 @@ def date_format(date_string):
        return "OK"
    
 def shp_features(shp_f):
-    print(shp_f)
+    #print(shp_f)
     label_gdf = gpd.read_file(shp_f)
     
     return json.loads(label_gdf.exterior.to_json())['features']
@@ -114,7 +115,7 @@ def freedman_bins(df):
     n = len(df)
     h = 2 * iqr * n**(-1/3)
     bins = (df.max() - df.min())/h 
-    if np.isnan(np.array(bins)):
+    if np.isnan(np.array(bins)) or np.isinf(np.array(bins)):
         bins = 2 
     return int(np.ceil(bins))
 
@@ -142,6 +143,8 @@ class ClassifierSICE():
                 # self.colours  = ['#005AFF', '#5974AF', '#02D26E74', '#800080', '#03EDFE', '#04A0E4F5', '#05E9FEFF']
                 self.classes = ['dark_ice','bright_ice','purple_ice','red_snow','lakes','flooded_snow','melted_snow','dry_snow']
                 self.colours  = ['#005AFF', '#5974AF', '8b05f2','#02D26E74', '#800080', '#03EDFE', '#04A0E4F5', '#05E9FEFF']
+                # self.classes = ['dark_ice','bright_ice','purple_ice','red_snow','dust','lakes','flooded_snow','melted_snow','dry_snow']
+                # self.colours  = ['#005AFF', '#5974AF', '8b05f2','#02D26E74','#7F2B0A' ,'#800080', '#03EDFE', '#04A0E4F5', '#05E9FEFF']
                 
             else:
                 self.classes
@@ -164,7 +167,14 @@ class ClassifierSICE():
                     ])
 
             
-            
+    def dim_redux(self,data):
+        
+        train_data,train_label,test_data,test_label = self._train_test_format(data)
+        svd = TruncatedSVD(n_compenents = len(self.classes))
+        x_new = svd.fit_transform(train_data)
+        
+        return x_new
+                
     def get_training_data(self,d_t = None,polar = None):
         
         '''Imports training from thredds server using OPeNDAP.
@@ -209,7 +219,11 @@ class ClassifierSICE():
         for d,ref,re in zip(training_dates,dataset_ids,regions):     
             print(f"Getting Training Data for {d}")
             training_data[d] = {}
-            ds = xr.open_dataset(f'https://thredds.geus.dk/thredds/dodsC/SICE_500m/Greenland/{ref}')
+            
+            print(f'region: {re}')
+            print(f'dataset: {ref}')
+            
+            ds = xr.open_dataset(f'https://thredds.geus.dk/thredds/dodsC/SICE_500m/{re}/{ref}')
             shp_files_date = [s for s in shp_files if d in s.replace('-','_')]
             
             for f in self.classes:
@@ -220,9 +234,10 @@ class ClassifierSICE():
                 label_shps = [item for sublist in label_shps for item in sublist]    
                 
                 
-                x = np.array(ds[self.training_bands[0]].x)
-                y = np.array(ds[self.training_bands[0]].y)
-                xgrid,ygrid = np.meshgrid(x,y)
+                #x = np.array(ds[self.training_bands[0]].x)
+                #y = np.array(ds[self.training_bands[0]].y)
+                xcoor,ycoor = tuple(ds[self.training_bands[0]].coords.keys())
+                xgrid,ygrid =  np.meshgrid(ds[xcoor],ds[ycoor])
                 mask = (np.ones_like(xgrid) * False).astype(bool)
                 
                 
@@ -250,9 +265,6 @@ class ClassifierSICE():
         if not training_data:
             training_data = self.get_training_data()
         
-        
-        
-        
         t_days = list(training_data.keys())
         features = list(training_data[t_days[0]].keys())
         if output:
@@ -269,9 +281,6 @@ class ClassifierSICE():
             data_all = []
             for i,d in enumerate(t_days):
                 data = np.array([training_data[d][f][b] for b in self.training_bands]).T
-                
-                
-                
                 data[data>1] = np.nan
                 data[data<0.001] = np.nan
                 dates = np.ones_like(data[:,0]) * i
@@ -285,7 +294,7 @@ class ClassifierSICE():
             column_names = [d[0] for d in df_data.columns]
             
             num_rows = -(-len(column_names) // 2)
-            fig, axes = plt.subplots(nrows=num_rows, ncols=2, figsize=(40, 40), gridspec_kw={'hspace': 0.5})
+            fig, axes = plt.subplots(nrows=num_rows, ncols=2, figsize=(40, 40), gridspec_kw={'hspace': 0.2})
             axes = axes.flatten()
                 
             
@@ -333,7 +342,7 @@ class ClassifierSICE():
                     pdf_all_t_w[col].append(pdf_stack)
                     
                     ax.plot(x,y, color ='red',linewidth=6,\
-                            label='Gaussian pdf of combined training data',zorder=1)
+                            label='Combined Gaussian pdf ',zorder=1)
                     ax.plot(x,y, color ='black',linewidth=7,\
                             zorder=0)
                         
@@ -367,11 +376,14 @@ class ClassifierSICE():
                             
                             hist_dict[date_name][f][col] = {'bins' : bins_out, 'count' : n}
                             
-                    ax.set_title(f'Band: {col}',fontsize=20)
-                    ax.set_ylabel('Density Count',fontsize=20)
-                    ax.set_xlabel('Reflectance',fontsize=20)
-                    ax.tick_params(labelsize=16)
-                    ax.legend()
+                    ax.set_title(f'Band: {col}',fontsize=40)
+                    ax.set_ylabel('Density Count',fontsize=40)
+                    ax.set_xlabel('Reflectance',fontsize=40)
+                    
+                    
+
+                    ax.tick_params(labelsize=24)
+                    ax.legend(fontsize=24)
                     
                     
                             
@@ -382,10 +394,12 @@ class ClassifierSICE():
             #if len(column_names) % 2 == 1:
             #    fig.delaxes(axes[-1])  
             fig.delaxes(axes[-1])
-            plt.suptitle(f'Training Data Band Distributions of Class {f}', fontsize=30)  # Add a single title
+            #plt.suptitle(f'Training Data Band Distributions of Class {f}', fontsize=40)  # Add a single title
+            plt.subplots_adjust(wspace=0.1, hspace=0.1,top=0.85)
             #plt.tight_layout()  # Adjust layout to make space for the title
             if output:
-                plt.savefig(self.base_folder + os.sep + 'figs' + os.sep + f'histogram_{f}.png')
+                #plt.savefig(self.base_folder + os.sep + 'figs' + os.sep + f'histogram_{f}.png')
+                plt.savefig(self.base_folder + os.sep + 'figs' + os.sep + f'histogram_{f}.png',dpi=400,bbox_inches='tight')
                 #plt.savefig(self.base_folder + os.sep + 'figs' + os.sep + f'histogram_{f}.png',bbox='tight')
                 #plt.close()
                
@@ -423,10 +437,10 @@ class ClassifierSICE():
                 y = cl[:,1]
                 class_int = int(np.unique(cl[:,2]))
                 class_name = features[class_int]
-                
+                b_spec = toa[-2:]
                 mean_spectrum[class_name]['mean'].append(np.nanmean(x))
                 mean_spectrum[class_name]['std'].append(np.nanstd(x))
-                mean_spectrum[class_name]['wl'].append(spectrum[toa])
+                mean_spectrum[class_name]['wl'].append(spectrum[b_spec])
                 
                 ax.plot(x,y, color = color_multi[class_int],linewidth=6,\
                         label=f'{class_name}',zorder=1)
@@ -442,7 +456,7 @@ class ClassifierSICE():
         
         if len(column_names) % 2 == 1:
             fig.delaxes(axes[-1])  
-        fig.delaxes(axes[-1])      
+        #fig.delaxes(axes[-1])      
         plt.suptitle('Gaussian PDF of all classes - With Tukey BiWeights', fontsize=30)  # Add a single title
         #plt.tight_layout()  # Adjust layout to make space for the title
         plt.show()
@@ -463,36 +477,33 @@ class ClassifierSICE():
             x = np.array(mean_spectrum[c]['wl']).ravel()
             y = np.array(mean_spectrum[c]['mean'])
             z = np.array(mean_spectrum[c]['std'])
- 
- 
- 
-           
- 
+            
+            
             ax.scatter(x, y,label=f'{c}',color = color_multi[i],s=29)
             ax.scatter(x, y,color = 'black',s=45,zorder=0)
             # Create shaded area around the line
             #ax.fill_between(x, y - z, y + z, alpha=0.3, color=color_multi[i])
             ax.plot(x, y,color = color_multi[i],zorder=0,linewidth = 1)
             ax.plot(x, y,color = 'black',zorder=-1,linewidth = 2)
-            if start == 1 and c == 'dry_snow':
+            if start == 1 and c == 'red_snow':
                 for ii, txt in enumerate(self.training_bands):
                     ax.annotate('B'+txt[-2:], (x[ii], -0.0),
                      rotation=90,zorder=5,size = 15)
                     ax.plot((x[ii],x[ii]), (0,1),color = 'black',alpha=0.2,
                             zorder=-5)
                 start = 0
- 
+     
  
         # Customize the plot
         # graphics definitions
-        
+        band_type = self.training_bands[0][:-3]
         th=2 # line thickness
         formatx='{x:,.3f}' ; fs=18
         plt.rcParams["font.size"] = fs
         plt.rcParams['axes.facecolor'] = 'w'
         plt.rcParams['axes.edgecolor'] = 'k'
-        plt.xticks(fontsize=20, rotation=90)
-        plt.yticks(fontsize=20)
+        plt.xticks(fontsize=30, rotation=90)
+        plt.yticks(fontsize=30)
         plt.rcParams['axes.grid'] = False
         plt.rcParams['axes.grid'] = True
         plt.rcParams['grid.alpha'] = 0.5
@@ -501,15 +512,75 @@ class ClassifierSICE():
         plt.rcParams["mathtext.default"]='regular'
         plt.rcParams['grid.linewidth'] = th/2
         plt.rcParams['axes.linewidth'] = 1
-        ax.set_xlabel('Wavelength (nm)',fontsize=35)
-        ax.set_ylabel('Reflectance (-)',fontsize=35)
-        ax.set_title('Mean Reflectance on Training Data',fontsize=35)
+        ax.set_xlabel('wavelength, nm',fontsize=35)
+        ax.set_ylabel(f'{band_type} reflectance',fontsize=35)
+        #ax.set_title('Mean Reflectance on Training Data',fontsize=35)
         ax.legend(loc='center left',bbox_to_anchor=(1,0.5),fontsize=35,markerscale=4)
         # Show the plot
-        plt.savefig(self.base_folder + os.sep + 'figs' + os.sep + f'Mean Reflectance on Training Data.png',dpi=400)
+        
+        plt.savefig(self.base_folder + os.sep + 'figs' + os.sep + f'{band_type}_mean_reflectance_of_training_data.png',dpi=400,bbox_inches='tight')
         plt.show()
+        
+        for i,c in enumerate(list(mean_spectrum.keys())):
+            
+            x = np.array(mean_spectrum[c]['wl']).ravel()
+            y = np.array(mean_spectrum[c]['mean'])
+            z = np.array(mean_spectrum[c]['std'])
+            
+            fig, ax = plt.subplots(figsize=(24, 18),dpi=600)
+            
+            start = 1
+            
+            min_y = 0
+            max_y = 0
+            for ii,cc in enumerate(list(mean_spectrum.keys())):
+                if i != ii: 
+                    
+                    yy = np.array(mean_spectrum[cc]['mean'])
+                    ratio = (y/yy)
+                    ax.scatter(x, ratio,label=f'{cc}',color = color_multi[ii],s=29)
+                    ax.scatter(x, ratio,color = 'black',s=45,zorder=0)
+                    # Create shaded area around the line
+                    #ax.fill_between(x, y - z, y + z, alpha=0.3, color=color_multi[i])
+                    ax.plot(x, ratio,color = color_multi[ii],zorder=0,linewidth = 1)
+                    ax.plot(x, ratio,color = 'black',zorder=-1,linewidth = 2)
+                    
+                    if min_y > np.nanmin(ratio):
+                        min_y = np.nanmin(ratio)
+                    if max_y < np.nanmax(ratio):
+                        max_y = np.nanmax(ratio)    
+                    
+            
+            for jj, txt in enumerate(self.training_bands):
+                ax.annotate('B'+txt[-2:], (x[jj], -0.0),
+                 rotation=90,zorder=5,size = 15)
+                ax.plot((x[jj],x[jj]), (0,max_y),color = 'black',alpha=0.2,
+                        zorder=-5)
+                
+            th=2 # line thickness
+            formatx='{x:,.3f}' ; fs=18
+            plt.rcParams["font.size"] = fs
+            plt.rcParams['axes.facecolor'] = 'w'
+            plt.rcParams['axes.edgecolor'] = 'k'
+            plt.xticks(fontsize=30, rotation=90)
+            plt.yticks(fontsize=30)
+            plt.rcParams['axes.grid'] = False
+            plt.rcParams['axes.grid'] = True
+            plt.rcParams['grid.alpha'] = 0.5
+            plt.rcParams['grid.color'] = "#C6C6C6"
+            plt.rcParams["legend.facecolor"] ='w'
+            plt.rcParams["mathtext.default"]='regular'
+            plt.rcParams['grid.linewidth'] = th/2
+            plt.rcParams['axes.linewidth'] = 1
+            ax.set_xlabel('wavelength, nm',fontsize=35)
+            ax.set_ylabel('rBRR/TOA ratio',fontsize=35)
+            ax.set_title(f'',fontsize=35)
+            ax.legend(loc='center left',bbox_to_anchor=(1,0.5),fontsize=35,markerscale=4)
+            band_type = self.training_bands[0][:-3]
+            plt.savefig(self.base_folder + os.sep + 'figs' + os.sep + f'{band_type}_{c}_ratio_to_all_classes.png',dpi=400,bbox_inches='tight')
+            plt.show()
            
-        fig, axes = plt.subplots(nrows=num_rows, ncols=2, figsize=(22, 12), gridspec_kw={'hspace': 0.5})
+        fig, axes = plt.subplots(nrows=num_rows, ncols=2, figsize=(22, 18), gridspec_kw={'hspace': 0.5})
         axes = axes.flatten()
         color_multi = generate_diverging_colors_hex(len(features))
         for i,toa in enumerate(self.training_bands):
@@ -517,10 +588,14 @@ class ClassifierSICE():
             ax = axes[i]
             for j,cl in enumerate(data):
                 
+                
+                
                 x = cl[:,0]
                 y = cl[:,1]
                 class_int = int(np.unique(cl[:,2]))
                 class_name = features[class_int]
+                
+            
                 #
                 ax.plot(x,y, color = color_multi[class_int],linewidth=6,\
                         label=f'{class_name}',zorder=1)
@@ -541,10 +616,6 @@ class ClassifierSICE():
         plt.show()
         
         
-        
-        
-        
-        
         if output: 
             dicts = [hist_dict[d] for d in hist_dict]
             dfs = [pd.DataFrame.from_dict(d) for d in dicts]
@@ -554,7 +625,7 @@ class ClassifierSICE():
         
         return 
     
-    def _train_test_format(self,training_data,test_type,test_date,fold):
+    def _train_test_format(self,training_data,test_type=None,test_date=None,fold=None):
         
         train_data = []
         train_label = []
@@ -622,8 +693,7 @@ class ClassifierSICE():
                 
     def train_svm(self,training_data=None,c=1,weights=True,kernel='rbf',prob=False,test_type=None,fold=None,test_date=None,export=None):
         
-        #enablePrint()
-        
+           
         if not training_data:
             training_data = self.get_training_data()
             
@@ -649,8 +719,10 @@ class ClassifierSICE():
         train_data = []
         train_label = []
         
+        
         print('Formatting Training Data')
-        train_data,train_label,test_data,test_label = self._train_test_format(training_data,test_type,test_date,fold)
+        train_data,train_label,test_data,test_label = self._train_test_format(training_data,\
+                                                      test_type=test_type,test_date=test_date,fold=fold)
 
         if weights:
             print('Computing Weights')
@@ -925,8 +997,11 @@ class ClassifierSICE():
         self.ygrid = self.prediction_data[date]['meta']['y']
         self.crs = self.prediction_data[date]['meta']['crs']
         
-        mask = ~np.isnan(data[0,:,:])
+        #mask = ~np.isnan(data[0,:,:])
+        mask = ~np.isnan(data).any(axis=0)
         data_masked = data[:,mask].T
+        # nan_rows = np.isnan(data_masked).any(axis=1)
+        # data_masked = data_masked[~nan_rows]
         
         labels_predict = self.model.predict(data_masked)
         labels_grid = np.ones_like(self.xgrid) * np.nan

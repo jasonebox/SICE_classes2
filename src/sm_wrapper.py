@@ -15,11 +15,16 @@ import os
 
 
 # bands = ["r_TOA_01" ,"r_TOA_02" ,"r_TOA_03", "r_TOA_04", "r_TOA_05","r_TOA_06" ,"r_TOA_07" ,"r_TOA_08", "r_TOA_09",\
-#          "r_TOA_10" ,"r_TOA_11" , "r_TOA_14","r_TOA_15" ,"r_TOA_16" ,"r_TOA_17", "r_TOA_18", "r_TOA_19",\
-#          "r_TOA_20","r_TOA_21" ]
+#           "r_TOA_10" ,"r_TOA_11" ,"r_TOA_16" ,"r_TOA_17", "r_TOA_18", "r_TOA_19"\
+#           ,"r_TOA_21" ]
     
     
-bands = ["r_TOA_02" ,"r_TOA_04" ,"r_TOA_06", "r_TOA_08", "r_TOA_21"]
+# bands = ["r_TOA_02" ,"r_TOA_04" ,"r_TOA_06", "r_TOA_08", "r_TOA_21"]
+# bands = ["rBRR_02" ,"rBRR_04" ,"rBRR_06", "rBRR_08", "rBRR_21"]
+
+bands = ["rBRR_01" ,"rBRR_02" ,"rBRR_03", "rBRR_04", "rBRR_05","rBRR_06" ,"rBRR_07" ,"rBRR_08", "rBRR_09",\
+          "rBRR_10" ,"rBRR_11" ,"rBRR_16" ,"rBRR_17", "rBRR_18", "rBRR_19"\
+          ,"rBRR_21" ]
 
 classify = sm.ClassifierSICE(bands=bands)
 
@@ -36,7 +41,7 @@ training_data = classify.get_training_data(d_t=dates)
 
 # %%
 
-###### Plot Training Data ######
+###### Plot Training Data #######
 
 classify.plot_training_data(training_data=training_data,output=True)
 
@@ -91,7 +96,7 @@ for i in list(folds):
    
     
 t_dates = list(test_dict.keys())
-classes = ['dark_ice', 'bright_ice','purple_ice' ,'red_snow',
+classes = ['dark_ice', 'bright_ice','purple_ice','red_snow',
            'lakes', 'flooded_snow', 'melted_snow', 'dry_snow']
 
 for cl in classes:
@@ -120,6 +125,8 @@ for cl in classes:
     print(f'Accuracy Standard Deviation for {cl} : {acc_std}')
     print(f'Omission for {cl} : {omi_m}')
     print(f'Comission for {cl} : {com_m}')
+    
+    #[(l/sum(lars[:,6])*100) for l in lars[:,6]] acc across all classes 
 
 # %%
 

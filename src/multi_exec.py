@@ -48,6 +48,8 @@ def parse_arguments():
 
 def multiproc(day):
     logging.info(f'Processing {day}')
+    
+    
     classify = sm.ClassifierSICE()
     classify.predict_svm(dates_to_predict=day, model='import',
                          training_predict=False, prob=True)
@@ -63,11 +65,16 @@ if __name__ == "__main__":
     
     set_start_method("spawn")
     
+    f_on_d = glob.glob(base_f + os.sep + 'output' + os.sep + 'tif' + os.sep + '*.tif')
+    f_on_d_dates = [f.split(os.sep)[-1][:10] for f in f_on_d]
+    
+    dates = [d for d in dates if d.replace('-','_') not in f_on_d_dates]
     
     logging.info('Parallelization Spawned')
     
     with get_context("spawn").Pool(args.cores) as p:     
             p.starmap(multiproc,zip(dates))
+      
             p.close()
-            p.join()
-            logging.info("Done with multiprocessing")
+            p.join()     
+    logging.info("Done with multiprocessing")
