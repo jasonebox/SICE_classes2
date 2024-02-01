@@ -22,6 +22,7 @@ from pyproj import Transformer
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import confusion_matrix,accuracy_score
 from sklearn.decomposition import TruncatedSVD
+from sklearn.utils.extmath import randomized_svd
 import glob
 import json
 import time
@@ -36,7 +37,13 @@ from matplotlib.colors import ListedColormap
 import random
 import pickle
 import sys
+from EE_get import EarthEngine_S2
 
+def remove_tif(path):
+    if path.endswith(".tif") and os.path.isfile(path):
+        os.remove(path)
+        
+    
 def compute_weighted_mean(w,d):
     return sum(w * d) / sum(w)
 
@@ -51,6 +58,22 @@ def tukey_w(w,d,sigma):
     
     return w 
 
+def opentiff(filename):
+
+    "Input: Filename of GeoTIFF File "
+    "Output: xgrid,ygrid, data paramater of Tiff, the data projection"
+    warnings.filterwarnings("ignore", category=FutureWarning)
+    
+    da = rio.open(filename)
+    #proj = CRSproj(da.crs)
+
+    z = np.array(da.read(1),dtype=np.float32)
+    #nx,ny = da.width,da.height
+    #x,y = np.meshgrid(np.arange(nx,dtype=np.float32), np.arange(ny,dtype=np.float32)) * da.transform
+
+    da.close()
+
+    return z
 
 def huber_w(w,d,sigma):
     # Huber weights, by variance for each band to allow higher prediction skill
@@ -64,6 +87,10 @@ def huber_w(w,d,sigma):
     w[eps < -break_p] = -break_p/eps[eps < -break_p]
     
     return w 
+
+def color_hex(n_days): 
+    c_list = ['#FF0000','#00FF00','#0000FF','#FFFF00','#00FFFF','#800080','#FFA500','#008000','#A52A2A']    
+    return c_list[:n_days]
 
 def predefined_colors(class_names):
     N_classes=len(class_names)
@@ -85,9 +112,10 @@ def generate_diverging_colors_hex(num_colors, center_color='#808080'):
         if i < num_colors // 2:
             hue = random.uniform(0.7, 1.0)  # Warm colors
         else:
-            hue = random.uniform(0.0, 0.3)  # Cool colors
+            hue = random.uniform(0.7, 0.85)  # Adjusted cool colors range
         saturation = random.uniform(0.5, 1.0)
         value = random.uniform(0.5, 1.0)
+        
         rgb = colorsys.hsv_to_rgb(hue, saturation, value)
         colors.append('#%02x%02x%02x' % (int(rgb[0] * 255), int(rgb[1] * 255), int(rgb[2] * 255)))
     colors.insert(num_colors // 2, center_color)
@@ -119,7 +147,11 @@ def freedman_bins(df):
         bins = 2 
     return int(np.ceil(bins))
 
-
+def merge(list1, list2):
+     
+    merged_list = [(p1, p2) for idx1, p1 in enumerate(list1) 
+    for idx2, p2 in enumerate(list2) if idx1 == idx2]
+    return merged_list
     
 class ClassifierSICE():
     
@@ -130,9 +162,11 @@ class ClassifierSICE():
         
             self.src_folder = os.getcwd()
             self.base_folder = os.path.abspath('..')
+            self.pixel_search = False
             WGSProj = CRSproj.from_string("+init=EPSG:4326")
             PolarProj = CRSproj.from_string("+init=EPSG:3413")
             self.transformer = Transformer.from_proj(WGSProj, PolarProj)
+            self.transformer_inv = Transformer.from_proj(PolarProj, WGSProj)
             if not bands:    
                 self.training_bands = ["r_TOA_02" ,"r_TOA_04" ,"r_TOA_06", "r_TOA_08", "r_TOA_21"]
             else:
@@ -166,16 +200,49 @@ class ClassifierSICE():
                         logging.StreamHandler()
                     ])
 
-            
-    def dim_redux(self,data):
+    
+    def dim_redux(self,data,method):
         
+        
+        print('Dim reduction by SVD')
         train_data,train_label,test_data,test_label = self._train_test_format(data)
-        svd = TruncatedSVD(n_compenents = len(self.classes))
-        x_new = svd.fit_transform(train_data)
         
-        return x_new
+        if method == 'SVD':
+            k = len(train_data[0,:])
+        
+            U, Sigma, VT = randomized_svd(train_data, 
+                                          n_components=k,
+                                          n_iter=5,
+                                          random_state=None)
+            X_approx = U[:, :k] @ np.diag(Sigma[:k]) @ VT[:k, :]
+            approx_error = np.linalg.norm(train_data - X_approx) / np.linalg.norm(train_data)
+            Vk = VT[:k, :]
+            
+            #svd = TruncatedSVD(n_components=len(train_data[0,:]))
+            #x_new = svd.fit_transform(train_data)
+            
+            feature_importance = np.abs(Vk).sum(axis=0)
+        
+            sorted_idx = np.argsort(feature_importance)[::-1]
+            
+            top_features = [self.training_bands[i] for i in sorted_idx[:]]
+        elif method == 'cov': 
+            
+            top_features = {}
+            
+            for i,cl in enumerate(self.classes):
                 
-    def get_training_data(self,d_t = None,polar = None):
+                class_data = train_data[train_label==i] 
+                cov_m = np.cov(class_data.T)
+                sum_cov = [np.sum(ii) for ii in cov_m]
+                sorted_idx = np.argsort(sum_cov)[::-1]
+                top = [self.training_bands[i] for i in sorted_idx]
+                top_features[cl] = {'top_bands' : top}
+                
+                
+        return top_features 
+                
+    def get_training_data(self,d_t=None,polar=None,local=False,bio_track=False):
         
         '''Imports training from thredds server using OPeNDAP.
         The training dates,area and features are defined by the shapefiles in the /labels folder
@@ -196,7 +263,6 @@ class ClassifierSICE():
         shp_files = glob.glob(self.base_folder + os.sep + 'ROIs' + os.sep + '**' + os.sep + '**.shp', recursive=True)
         training_dates = np.unique([d.split(os.sep)[-2].replace('-','_') for d in shp_files])
        
-        
         if d_t: 
             d_t = [d.replace('-','_') for d in d_t]
             training_dates =  [d for d in training_dates if d in d_t]
@@ -223,7 +289,12 @@ class ClassifierSICE():
             print(f'region: {re}')
             print(f'dataset: {ref}')
             
-            ds = xr.open_dataset(f'https://thredds.geus.dk/thredds/dodsC/SICE_500m/{re}/{ref}')
+            if not local: 
+                ds_id = f'https://thredds.geus.dk/thredds/dodsC/SICE_500m/{re}/{ref}'
+            else: 
+                ds_id = self.base_folder + os.sep + 'training_data' + os.sep + re + os.sep + ref
+            
+            ds = xr.open_dataset(ds_id)
             shp_files_date = [s for s in shp_files if d in s.replace('-','_')]
             
             for f in self.classes:
@@ -241,7 +312,7 @@ class ClassifierSICE():
                 mask = (np.ones_like(xgrid) * False).astype(bool)
                 
                 
-                for ls in label_shps:
+                for ii,ls in enumerate(label_shps):
                     if ls['geometry'] is not None:
                         x_poly, y_poly = map(list, zip(*ls['geometry']['coordinates']))
                         
@@ -251,7 +322,12 @@ class ClassifierSICE():
                         p = path.Path(np.column_stack((x_poly,y_poly)))
                         idx_poly = p.contains_points(np.column_stack((xgrid.ravel(),ygrid.ravel())))
                         mask.ravel()[idx_poly] = True
-                    
+                        
+                        if bio_track and (f == 'red_snow') and (d == '2019_08_02'):
+                            red_snow_x = xgrid[mask]
+                            red_snow_y = ygrid[mask]
+                            self._S2_bio_track(red_snow_x, red_snow_y, d.replace('_','-'),train=True,poly_n=ii)
+                        
                 training_data[d][f] = {k:np.array(ds[k])[mask] for k in self.training_bands}
                 #training_data[d][f]['sza'] = {np.cos(np.radians(np.array(ds['sza'])[mask]))}
                 #training_data[d][f] = {k:np.array(ds[k].where(mask))[mask] for k in self.training_bands}
@@ -273,7 +349,7 @@ class ClassifierSICE():
         alpha_value = 0.4
         #center_color = (0.5, 0.5, 0.5)  # Adjust the center color as needed
         color_multi = generate_diverging_colors_hex(len(t_days))
-        
+        color_multi = color_hex(len(t_days))
         pdf_all_no_w = {k:[] for k in self.training_bands}
         pdf_all_t_w = {k:[] for k in self.training_bands}
        
@@ -461,7 +537,7 @@ class ClassifierSICE():
         #plt.tight_layout()  # Adjust layout to make space for the title
         plt.show()
         
-             
+        
         
         # Initialize a figure
         start = 1
@@ -521,68 +597,69 @@ class ClassifierSICE():
         plt.savefig(self.base_folder + os.sep + 'figs' + os.sep + f'{band_type}_mean_reflectance_of_training_data.png',dpi=400,bbox_inches='tight')
         plt.show()
         
-        for i,c in enumerate(list(mean_spectrum.keys())):
+        # for i,c in enumerate(list(mean_spectrum.keys())):
             
-            x = np.array(mean_spectrum[c]['wl']).ravel()
-            y = np.array(mean_spectrum[c]['mean'])
-            z = np.array(mean_spectrum[c]['std'])
+        #     x = np.array(mean_spectrum[c]['wl']).ravel()
+        #     y = np.array(mean_spectrum[c]['mean'])
+        #     z = np.array(mean_spectrum[c]['std'])
             
-            fig, ax = plt.subplots(figsize=(24, 18),dpi=600)
+        #     fig, ax = plt.subplots(figsize=(24, 18),dpi=600)
             
-            start = 1
+        #     start = 1
             
-            min_y = 0
-            max_y = 0
-            for ii,cc in enumerate(list(mean_spectrum.keys())):
-                if i != ii: 
+        #     min_y = 0
+        #     max_y = 0
+        #     for ii,cc in enumerate(list(mean_spectrum.keys())):
+        #         if i != ii: 
                     
-                    yy = np.array(mean_spectrum[cc]['mean'])
-                    ratio = (y/yy)
-                    ax.scatter(x, ratio,label=f'{cc}',color = color_multi[ii],s=29)
-                    ax.scatter(x, ratio,color = 'black',s=45,zorder=0)
-                    # Create shaded area around the line
-                    #ax.fill_between(x, y - z, y + z, alpha=0.3, color=color_multi[i])
-                    ax.plot(x, ratio,color = color_multi[ii],zorder=0,linewidth = 1)
-                    ax.plot(x, ratio,color = 'black',zorder=-1,linewidth = 2)
+        #             yy = np.array(mean_spectrum[cc]['mean'])
+        #             ratio = (y/yy)
+        #             ax.scatter(x, ratio,label=f'{cc}',color = color_multi[ii],s=29)
+        #             ax.scatter(x, ratio,color = 'black',s=45,zorder=0)
+        #             # Create shaded area around the line
+        #             #ax.fill_between(x, y - z, y + z, alpha=0.3, color=color_multi[i])
+        #             ax.plot(x, ratio,color = color_multi[ii],zorder=0,linewidth = 1)
+        #             ax.plot(x, ratio,color = 'black',zorder=-1,linewidth = 2)
                     
-                    if min_y > np.nanmin(ratio):
-                        min_y = np.nanmin(ratio)
-                    if max_y < np.nanmax(ratio):
-                        max_y = np.nanmax(ratio)    
+        #             if min_y > np.nanmin(ratio):
+        #                 min_y = np.nanmin(ratio)
+        #             if max_y < np.nanmax(ratio):
+        #                 max_y = np.nanmax(ratio)    
                     
             
-            for jj, txt in enumerate(self.training_bands):
-                ax.annotate('B'+txt[-2:], (x[jj], -0.0),
-                 rotation=90,zorder=5,size = 15)
-                ax.plot((x[jj],x[jj]), (0,max_y),color = 'black',alpha=0.2,
-                        zorder=-5)
+        #     for jj, txt in enumerate(self.training_bands):
+        #         ax.annotate('B'+txt[-2:], (x[jj], -0.0),
+        #          rotation=90,zorder=5,size = 15)
+        #         ax.plot((x[jj],x[jj]), (0,max_y),color = 'black',alpha=0.2,
+        #                 zorder=-5)
                 
-            th=2 # line thickness
-            formatx='{x:,.3f}' ; fs=18
-            plt.rcParams["font.size"] = fs
-            plt.rcParams['axes.facecolor'] = 'w'
-            plt.rcParams['axes.edgecolor'] = 'k'
-            plt.xticks(fontsize=30, rotation=90)
-            plt.yticks(fontsize=30)
-            plt.rcParams['axes.grid'] = False
-            plt.rcParams['axes.grid'] = True
-            plt.rcParams['grid.alpha'] = 0.5
-            plt.rcParams['grid.color'] = "#C6C6C6"
-            plt.rcParams["legend.facecolor"] ='w'
-            plt.rcParams["mathtext.default"]='regular'
-            plt.rcParams['grid.linewidth'] = th/2
-            plt.rcParams['axes.linewidth'] = 1
-            ax.set_xlabel('wavelength, nm',fontsize=35)
-            ax.set_ylabel('rBRR/TOA ratio',fontsize=35)
-            ax.set_title(f'',fontsize=35)
-            ax.legend(loc='center left',bbox_to_anchor=(1,0.5),fontsize=35,markerscale=4)
-            band_type = self.training_bands[0][:-3]
-            plt.savefig(self.base_folder + os.sep + 'figs' + os.sep + f'{band_type}_{c}_ratio_to_all_classes.png',dpi=400,bbox_inches='tight')
-            plt.show()
+        #     th=2 # line thickness
+        #     formatx='{x:,.3f}' ; fs=18
+        #     plt.rcParams["font.size"] = fs
+        #     plt.rcParams['axes.facecolor'] = 'w'
+        #     plt.rcParams['axes.edgecolor'] = 'k'
+        #     plt.xticks(fontsize=30, rotation=90)
+        #     plt.yticks(fontsize=30)
+        #     plt.rcParams['axes.grid'] = False
+        #     plt.rcParams['axes.grid'] = True
+        #     plt.rcParams['grid.alpha'] = 0.5
+        #     plt.rcParams['grid.color'] = "#C6C6C6"
+        #     plt.rcParams["legend.facecolor"] ='w'
+        #     plt.rcParams["mathtext.default"]='regular'
+        #     plt.rcParams['grid.linewidth'] = th/2
+        #     plt.rcParams['axes.linewidth'] = 1
+        #     ax.set_xlabel('wavelength, nm',fontsize=35)
+        #     ax.set_ylabel('rBRR/TOA ratio',fontsize=35)
+        #     ax.set_title(f'',fontsize=35)
+        #     ax.legend(loc='center left',bbox_to_anchor=(1,0.5),fontsize=35,markerscale=4)
+        #     band_type = self.training_bands[0][:-3]
+        #     plt.savefig(self.base_folder + os.sep + 'figs' + os.sep + f'{band_type}_{c}_ratio_to_all_classes.png',dpi=400,bbox_inches='tight')
+        #     plt.show()
            
         fig, axes = plt.subplots(nrows=num_rows, ncols=2, figsize=(22, 18), gridspec_kw={'hspace': 0.5})
         axes = axes.flatten()
         color_multi = generate_diverging_colors_hex(len(features))
+        color_multi = color_hex(len(features))
         for i,toa in enumerate(self.training_bands):
             data = pdf_all_no_w[toa]
             ax = axes[i]
@@ -691,7 +768,8 @@ class ClassifierSICE():
         
         return train_data,train_label,test_data,test_label
                 
-    def train_svm(self,training_data=None,c=1,weights=True,kernel='rbf',prob=False,test_type=None,fold=None,test_date=None,export=None):
+    def train_svm(self,training_data=None,c=1,gamma='scale',weights=True,kernel='rbf',
+                  prob=False,test_type=None,fold=None,test_date=None,export=None):
         
            
         if not training_data:
@@ -743,7 +821,7 @@ class ClassifierSICE():
             w_samples = np.ones_like(train_label)
         
         print('Training Model....')
-        model = svm.SVC(C = c, decision_function_shape="ovo",kernel=kernel,probability=bool(prob))
+        model = svm.SVC(C = c,gamma=gamma, decision_function_shape="ovo",kernel=kernel,probability=bool(prob))
         model.fit(train_data, train_label,sample_weight=w_samples)
         print('Done')
         
@@ -883,7 +961,8 @@ class ClassifierSICE():
             plt.tight_layout()  # Adjust layout to make space for the title
             plt.show()
             
-            print(f"Accuracy of Predicting {cl}: {ac}")
+            if not mute:     
+                print(f"Accuracy of Predicting {cl}: {ac}")
             #print(f"Confusion Matrix of {cl}: \n {cm} \n")
             
             for l in list(np.unique(labels_pred)):
@@ -891,8 +970,8 @@ class ClassifierSICE():
                 no_l_p = len(labels_pred[labels_pred==l])
                 label_name_prd = self.classes[int(l)] 
                 label_name_cor = cl
-                
-                print(f'Model Classified {label_name_prd} {no_l_p} times, the Correct Class was {label_name_cor} \n')
+                if not mute: 
+                    print(f'Model Classified {label_name_prd} {no_l_p} times, the Correct Class was {label_name_cor} \n')
                 
         #enablePrint()
         
@@ -948,10 +1027,12 @@ class ClassifierSICE():
                 
         return prediction_data
         
-    def predict_svm(self,dates_to_predict,model=None,training_predict=False,prob=False,export='tif'):
+    def predict_svm(self,dates_to_predict,model=None,training_predict=False,
+                    prob=False,export='tif',bio_track=False):
         
         self.model = model
         self.prob = prob
+        self.bio_track = bio_track
         
         if export not in ['tiff','tif','all','png']:
             logging.info('Please specify a correct export format, options = [tiff, tif, all, png]')
@@ -988,6 +1069,7 @@ class ClassifierSICE():
         
         for d in p_days:
             self._predict_for_date(d)
+           
     
     def _predict_for_date(self,date):
 
@@ -1013,7 +1095,8 @@ class ClassifierSICE():
             prob_grid = np.ones_like(self.xgrid) * np.nan
             prob_grid[mask] = labels_prob
             
-        
+       
+             
         logging.info(f'Done for {date}')
         date_out = date.replace('-','_')
         
@@ -1029,10 +1112,216 @@ class ClassifierSICE():
             if self.prob:
                 self.f_name = f'{out_folder}{os.sep}{date_out}_SICE_probability.{exp}'
                 self._export(prob_grid)
-                
+        
+        if self.bio_track:
+             logging.info(f'Checking red snow predictions for algae, date: {date}')
+             
+             prob_mask = prob_grid > 0.96
+             
+             red_snow_x = self.xgrid[prob_mask][labels_grid[prob_mask]==self.classes.index('red_snow')]
+             red_snow_y = self.ygrid[prob_mask][labels_grid[prob_mask]==self.classes.index('red_snow')]
+             
+             self._S2_bio_track(self,red_snow_x,red_snow_y,date)
+             
         logging.info('Done')
         
+    def _S2_bio_track(self,red_snow_x,red_snow_y,date,train=False,poly_n = False):
         
+        spectrum = pd.read_csv('S2_spectrum.csv')
+        if not self.pixel_search:
+            logging.info(f'Tracking Bio Signal Using S2 on date: {date}')
+        
+       
+        for i,(x,y) in enumerate(zip(red_snow_x,red_snow_y)):
+           
+            x_lon,y_lat = self.transformer_inv.transform(np.array([x,x+500]),np.array([y,y-500]))
+            
+            if ((x_lon[0] > -52) and (x_lon[0] < -50) and  (y_lat[0] > 65) and  (y_lat[0] < 67)): 
+               
+                self.pixel_search = False
+                
+                bounds = [[x_lon[0], y_lat[0]],
+                         [x_lon[1], y_lat[0]],
+                         [x_lon[0],y_lat[1]],
+                         [x_lon[1], y_lat[1]]] 
+                
+                if train:
+                    id_tile = str(poly_n).zfill(2) + '_' + str(i).zfill(2)
+                else:
+                    id_tile = str(i).zfill(2)
+                
+                logging.info(f'id tile: {id_tile}')
+                
+                s2_ids = EarthEngine_S2(bounds,date,id_tile)
+                
+                if not s2_ids: 
+                    logging.info(f"no S2 data at tile: {id_tile}, skipping...")
+                else:
+                    
+                    bands = [s.split('.')[1] for s in s2_ids]
+                    
+                    da = rio.open(s2_ids[0])
+                    
+                    nx,ny = da.width,da.height
+                    x_mask,y_mask = np.meshgrid(np.arange(nx,dtype=np.float32), np.arange(ny,dtype=np.float32)) * da.transform
+                    da.close()
+                    
+                    mask = ((x_mask > x) * (x_mask < (x+500)) * (y_mask < y) * (y_mask > (y-500)))
+                   
+                    nan_check = opentiff(s2_ids[0])[mask]
+                    
+                    if ~np.isnan(np.nanmean(nan_check)):
+                        
+                        
+                        s2_dict = {b:(opentiff(s2)[mask]).ravel() for b,s2 in zip(bands,s2_ids)}
+                        
+                        list(map(remove_tif,s2_ids))
+                        
+                      
+                        
+                        x_spec = np.array([spectrum[b] for b in bands]).ravel()
+                        y_spec = np.array([(s2_dict[b]) for b in bands])
+                        #std_spec = np.array([(s2_dict[b]) for b in bands])
+                        
+                        B5_ind = bands.index('B5')
+                        B4_ind = bands.index('B4') 
+                        B3_ind = bands.index('B3') 
+                        B2_ind = bands.index('B2') 
+                        
+                        
+                        y_R_G = y_spec[B3_ind,:] - y_spec[B4_ind,:]
+                        y_R_RR = y_spec[B4_ind,:] - y_spec[B5_ind,:]
+                        
+                        
+                        R_G_msk = y_R_G < 0.04
+                        B5_mask = y_R_RR < 0
+                        
+                        algae_msk = R_G_msk * B5_mask
+                        green_algae = ~R_G_msk * B5_mask
+                        
+                        y_spec_filt = y_spec[:,algae_msk]
+                        y_spec_snow = y_spec[:,~algae_msk]
+                        y_spec_green = y_spec[:,green_algae]
+                        
+                        fig, ax = plt.subplots(figsize=(12, 12),dpi=200)
+                        
+                        bbox = {'fc': '0.8', 'pad': 0}
+                        
+                        x_data_red = y_spec_filt[B3_ind,:] - y_spec_filt[B4_ind,:]
+                        y_data_red = y_spec_filt[B4_ind,:] - y_spec_filt[B5_ind,:]
+                        
+                        ax.scatter(x_data_red, y_data_red,label='Red Snow',color = 'red',s=45,marker='s')
+                        ax.scatter(x_data_red, y_data_red,color = 'black',s=60,zorder=0)
+                        
+                        x_data_snow = y_spec_snow[B3_ind,:] - y_spec_snow[B4_ind,:]
+                        y_data_snow = y_spec_snow[B4_ind,:] - y_spec_snow[B5_ind,:]
+                        
+                         
+                        ax.scatter(x_data_snow, y_data_snow,label='Snow',color = 'blue',s=45)
+                        ax.scatter(x_data_snow, y_data_snow,color = 'black',s=60,zorder=0)
+
+                        x_data_green = y_spec_green[B3_ind,:] - y_spec_green[B4_ind,:]
+                        y_data_green = y_spec_green[B4_ind,:] - y_spec_green[B5_ind,:]
+                         
+                        ax.scatter(x_data_green, y_data_green,label='Green Snow',color = 'green',s=45,marker='d')
+                        ax.scatter(x_data_green, y_data_green,color = 'black',s=60,zorder=0)
+                                                
+                        # Data for the first line
+                        x1 = [-0.05, 0.15]
+                        y1 = [0, 0]
+                        
+                        # Data for the second line
+                        x2 = [0.04, 0.04]
+                        y2 = [0, -0.25]
+                                                
+                        # Plotting the lines
+                        ax.plot(x1, y1)
+                        ax.plot(x2, y2)
+                        
+                        th=2 # line thickness
+                        formatx='{x:,.3f}' ; fs=18
+                        plt.rcParams["font.size"] = fs
+                        plt.rcParams['axes.facecolor'] = 'w'
+                        plt.rcParams['axes.edgecolor'] = 'k'
+                        plt.xticks(fontsize=30, rotation=90)
+                        plt.yticks(fontsize=30)
+                        plt.rcParams['axes.grid'] = False
+                        plt.rcParams['axes.grid'] = True
+                        plt.rcParams['grid.alpha'] = 0.5
+                        plt.rcParams['grid.color'] = "#C6C6C6"
+                        plt.rcParams["legend.facecolor"] ='w'
+                        plt.rcParams["mathtext.default"]='regular'
+                        plt.rcParams['grid.linewidth'] = th/2
+                        plt.rcParams['axes.linewidth'] = 1
+                        ax.set_xlabel(f'B3 - B4',fontsize=35)
+                        ax.set_ylabel(f'B4 - B5',fontsize=35)
+                        ax.set_title(f'Tile no: {id_tile}',fontsize=35)
+                        ax.legend(loc='center left',bbox_to_anchor=(1,0.5),fontsize=35,markerscale=4)
+                        
+                        # Show the plot
+                        out_f = self.base_folder + os.sep + 'figs' + os.sep + 'bio_tracker'
+                        plt.savefig(out_f + os.sep + f'S2_band_class_{id_tile}.png',dpi=200,bbox_inches='tight')
+                        #plt.show()
+                        plt.close()
+                        if y_spec.size > 0:
+                            
+                            # Initialize a figure
+                            fig, ax = plt.subplots(figsize=(24, 12),dpi=200)
+                     
+                            # Plot the line
+                            # the text bounding box
+                            bbox = {'fc': '0.8', 'pad': 0}
+                            
+                            y_data = np.nanmean(y_spec,axis=1)
+                            y_data_std = np.nanstd(y_spec,axis=1)
+                            x_pos = np.linspace(0,100,len(x_spec))
+                            
+                            ax.scatter(x_pos, y_data,label='Red Snow',color = 'red',s=29)
+                            ax.scatter(x_pos, y_data,color = 'black',s=45,zorder=0)
+                            # Create shaded area around the line
+                            ax.fill_between(x_pos, y_data - y_data_std, y_data + y_data_std, alpha=0.3, color='red')
+                            ax.plot(x_pos, y_data,color = 'red',zorder=0,linewidth = 1)
+                            ax.plot(x_pos, y_data,color = 'black',zorder=-1,linewidth = 2)
+                            tick_l = [str(xx) for xx in x_spec]
+                           
+                            ax.set_xticks(x_pos)
+                            ax.set_xticklabels(tick_l)
+                            # Customize the plot
+                            # graphics definitions
+                           
+                            th=2 # line thickness
+                            formatx='{x:,.3f}' ; fs=18
+                            plt.rcParams["font.size"] = fs
+                            plt.rcParams['axes.facecolor'] = 'w'
+                            plt.rcParams['axes.edgecolor'] = 'k'
+                            plt.xticks(fontsize=30, rotation=90)
+                            plt.yticks(fontsize=30)
+                            plt.rcParams['axes.grid'] = False
+                            plt.rcParams['axes.grid'] = True
+                            plt.rcParams['grid.alpha'] = 0.5
+                            plt.rcParams['grid.color'] = "#C6C6C6"
+                            plt.rcParams["legend.facecolor"] ='w'
+                            plt.rcParams["mathtext.default"]='regular'
+                            plt.rcParams['grid.linewidth'] = th/2
+                            plt.rcParams['axes.linewidth'] = 1
+                            ax.set_xlabel('wavelength, nm',fontsize=35)
+                            ax.set_ylabel(f'Sentinel-2 reflectance',fontsize=35)
+                            ax.set_title(f'Tile no: {id_tile}',fontsize=35)
+                            ax.legend(loc='center left',bbox_to_anchor=(1,0.5),fontsize=35,markerscale=4)
+                            # Show the plot
+                            out_f = self.base_folder + os.sep + 'figs' + os.sep + 'bio_tracker'
+                            plt.savefig(out_f + os.sep + f'S2_mean_reflectance_{id_tile}.png',dpi=200,bbox_inches='tight')
+                            #plt.show()
+                            plt.close()
+                            
+                        else:
+                             logging.info('No algae in this pixel')           
+            else:
+                if not self.pixel_search:
+                    logging.info(f'Pixels outside boundary box, searching....')
+                    self.pixel_search = True
+                    
+                    
     def _export(self,data):
         exp_format = self.f_name.split('.')[-1]
         if exp_format == 'png':
