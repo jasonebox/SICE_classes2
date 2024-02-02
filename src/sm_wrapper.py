@@ -28,32 +28,26 @@ import matplotlib.pyplot as plt
 #           ,"rBRR_21" ]
 
 bands = ["r_TOA_02" ,"r_TOA_04" ,"r_TOA_06", "r_TOA_08", "r_TOA_21"]
+bands = ["rBRR_02" ,"rBRR_04" ,"rBRR_06",'rBRR_08', "rBRR_09","rBRR_11", "rBRR_21"]
+
 classify = sm.ClassifierSICE(bands=bands)
 
 
 # %%
-
 ###### Import Training Data ######
-
 dates = None
-
 #test_date = '2017_07_28'
+dates=['2017_07_28','2019_08_02','2018_07_31','2020_07_22','2021_07_30','2022_07_31']
+training_data = classify.get_training_data(d_t=dates,local=True,s2_bio_track='surface',s3_bio_track='surface')
 
-dates=[ '2019_08_02','2018_07_31','2020_07_22','2021_07_30','2022_07_31']
- 
-training_data = classify.get_training_data(d_t=dates,local=True,bio_track=True)
 
 # %%
-
 ###### Plot Training Data #######
-
 classify.plot_training_data(training_data=training_data,output=True)
 
 
 # %%%
-
 ###### SVD Dimensionality Reduction ########
-
 band_importance = classify.dim_redux(training_data,'cov')
 
 

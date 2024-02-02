@@ -50,7 +50,7 @@ def add_one_day(original_date):
 
     return new_date_formatted
 
-def EarthEngine_S2(bounds,sday,id_tile):
+def EarthEngine_S2(bounds,sday,id_tile,prod):
     
     base_folder = os.path.abspath('..')
 
@@ -63,8 +63,14 @@ def EarthEngine_S2(bounds,sday,id_tile):
     polygon = ee.Geometry.Polygon(bounds)
     eday = add_one_day(sday)
     output_folder = base_folder + os.sep + 'output' + os.sep + 'S2_bio_tracker'
+    
+    if prod == 'default':
+        dataset = 'S2_HARMONIZED'
+    else:
+        dataset = 'S2_SR_HARMONIZED'
+        
     data = (
-      ee.ImageCollection('COPERNICUS/S2_HARMONIZED')
+      ee.ImageCollection(f'COPERNICUS/{dataset}')
       .filterBounds(polygon)
       .filterDate(sday, eday)
       .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20))

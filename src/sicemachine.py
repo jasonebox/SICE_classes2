@@ -168,7 +168,7 @@ class ClassifierSICE():
             self.transformer = Transformer.from_proj(WGSProj, PolarProj)
             self.transformer_inv = Transformer.from_proj(PolarProj, WGSProj)
             if not bands:    
-                self.training_bands = ["r_TOA_02" ,"r_TOA_04" ,"r_TOA_06", "r_TOA_08", "r_TOA_21"]
+                self.training_bands = ["r_TOA_02" ,"r_TOA_04" ,"r_TOA_06", "r_TOA_09","r_TOA_11" ,"r_TOA_21"]
             else:
                 self.training_bands = bands
                 
@@ -242,7 +242,7 @@ class ClassifierSICE():
                 
         return top_features 
                 
-    def get_training_data(self,d_t=None,polar=None,local=False,bio_track=False):
+    def get_training_data(self,d_t=None,polar=None,local=False,s3_bio_track=False,s2_bio_track=False):
         
         '''Imports training from thredds server using OPeNDAP.
         The training dates,area and features are defined by the shapefiles in the /labels folder
@@ -308,25 +308,41 @@ class ClassifierSICE():
                 #x = np.array(ds[self.training_bands[0]].x)
                 #y = np.array(ds[self.training_bands[0]].y)
                 xcoor,ycoor = tuple(ds[self.training_bands[0]].coords.keys())
-                xgrid,ygrid =  np.meshgrid(ds[xcoor],ds[ycoor])
+                xgrid,ygrid = np.meshgrid(ds[xcoor],ds[ycoor])
                 mask = (np.ones_like(xgrid) * False).astype(bool)
                 
                 
-                for ii,ls in enumerate(label_shps):
+                for ls in label_shps:
                     if ls['geometry'] is not None:
                         x_poly, y_poly = map(list, zip(*ls['geometry']['coordinates']))
                         
                         if 4326 in crs_shps:
                             x_poly,y_poly = self.transformer.transform(np.array(x_poly),np.array(y_poly))
-                                                                       
+                        
+                                               
                         p = path.Path(np.column_stack((x_poly,y_poly)))
                         idx_poly = p.contains_points(np.column_stack((xgrid.ravel(),ygrid.ravel())))
                         mask.ravel()[idx_poly] = True
                         
-                        if bio_track and (f == 'red_snow') and (d == '2019_08_02'):
-                            red_snow_x = xgrid[mask]
-                            red_snow_y = ygrid[mask]
-                            self._S2_bio_track(red_snow_x, red_snow_y, d.replace('_','-'),train=True,poly_n=ii)
+                if s2_bio_track and (f == 'red_snow'):
+                    
+                    red_snow_x = xgrid[mask]
+                    red_snow_y = ygrid[mask]
+                    
+                    if s3_bio_track: 
+                        bio_bands = ['08','06']
+                        bio_bands = [b for b in self.training_bands if b.split('_')[-1] in bio_bands]
+                        s3_bio_dict = {k:np.array(ds[k])[mask] for k in bio_bands}
+                        self._S3_bio_track(s3_bio_dict,d)
+                        
+                    
+                    if s2_bio_track == 'surface' and (d == '2019_08_02'):
+                        continue
+                        #self._S2_bio_track(red_snow_x, red_snow_y, d.replace('_','-'),prod='SR')
+                    else:
+                        continue
+                        #self._S2_bio_track(red_snow_x, red_snow_y, d.replace('_','-'),prod='default')
+                        
                         
                 training_data[d][f] = {k:np.array(ds[k])[mask] for k in self.training_bands}
                 #training_data[d][f]['sza'] = {np.cos(np.radians(np.array(ds['sza'])[mask]))}
@@ -1125,7 +1141,56 @@ class ClassifierSICE():
              
         logging.info('Done')
         
-    def _S2_bio_track(self,red_snow_x,red_snow_y,date,train=False,poly_n = False):
+        
+    def _S3_bio_track(self,s3_bio_dict,date):
+        
+        
+        B9_band = [b for b in self.training_bands if '06' in b]
+        B11_band = [b for b in self.training_bands if '08' in b]
+        
+        B9 = np.array(s3_bio_dict[B9_band[0]])
+        B11 = np.array(s3_bio_dict[B11_band[0]])
+        
+        b_ratio = B11/B9
+        
+        algae = (10**-35)*np.exp(87.015*b_ratio)
+        
+        lin_space = np.linspace(0.96, 1.032,30)
+        
+        func_plot = (10**-35)*np.exp(87.015*lin_space)
+
+        fig, ax = plt.subplots(figsize=(12, 12),dpi=200)
+        
+        bbox = {'fc': '0.8', 'pad': 0}
+        
+           
+        ax.scatter(b_ratio, algae,label='Red Snow',color = 'red',s=45,marker='s')
+        ax.scatter(b_ratio, algae,color = 'black',s=60,zorder=0,marker='s')
+
+        ax.plot(lin_space,func_plot,color='black',ls='--',zorder=0,lw='10')
+           
+        th=2 # line thickness
+        formatx='{x:,.3f}' ; fs=18
+        plt.rcParams["font.size"] = fs
+        plt.rcParams['axes.facecolor'] = 'w'
+        plt.rcParams['axes.edgecolor'] = 'k'
+        plt.xticks(fontsize=30, rotation=90)
+        plt.yticks(fontsize=30)
+        plt.rcParams['axes.grid'] = False
+        plt.rcParams['axes.grid'] = True
+        plt.rcParams['grid.alpha'] = 0.5
+        plt.rcParams['grid.color'] = "#C6C6C6"
+        plt.rcParams["legend.facecolor"] ='w'
+        plt.rcParams["mathtext.default"]='regular'
+        plt.rcParams['grid.linewidth'] = th/2
+        plt.rcParams['axes.linewidth'] = 1
+        ax.set_xlabel(f'{B11_band[0]}/{B9_band[0]} ratio',fontsize=35)
+        ax.set_ylabel(f'algae abundance (cells/ml) ',fontsize=35)
+        ax.set_title(f'S3 Red Snow Tracker date: {date}',fontsize=35)
+        ax.legend(loc='center left',bbox_to_anchor=(1,0.5),fontsize=35,markerscale=4)
+        plt.show()
+        
+    def _S2_bio_track(self,red_snow_x,red_snow_y,date,prod):
         
         spectrum = pd.read_csv('S2_spectrum.csv')
         if not self.pixel_search:
@@ -1145,14 +1210,12 @@ class ClassifierSICE():
                          [x_lon[0],y_lat[1]],
                          [x_lon[1], y_lat[1]]] 
                 
-                if train:
-                    id_tile = str(poly_n).zfill(2) + '_' + str(i).zfill(2)
-                else:
-                    id_tile = str(i).zfill(2)
+               
+                id_tile = str(i).zfill(2)
                 
                 logging.info(f'id tile: {id_tile}')
                 
-                s2_ids = EarthEngine_S2(bounds,date,id_tile)
+                s2_ids = EarthEngine_S2(bounds,date,id_tile,prod)
                 
                 if not s2_ids: 
                     logging.info(f"no S2 data at tile: {id_tile}, skipping...")
